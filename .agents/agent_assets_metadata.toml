@@ -1,0 +1,50 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "Wqz3RzrcMo6lZaIuy0U_R"
+uri = "file://artifacts/ochel-foods/src/assets/hero-spread.png"
+type = "image"
+title = "hero food spread"
+
+[[generated]]
+id = "KB3O-_WnVIU15SbVZhxNa"
+uri = "file://artifacts/ochel-foods/src/assets/pizza.png"
+type = "image"
+title = "pizza image"
+
+[[generated]]
+id = "QtwXPJK_FC7OdTcjeYy3I"
+uri = "file://artifacts/ochel-foods/src/assets/burger.png"
+type = "image"
+title = "burger image"
+
+[[generated]]
+id = "hBl-5vMKCoYwOAnX3kf43"
+uri = "file://artifacts/ochel-foods/src/assets/shawarma.png"
+type = "image"
+title = "shawarma image"
+
+[[generated]]
+id = "yu4llNViVVFZo0Nfet9MS"
+uri = "file://artifacts/ochel-foods/src/assets/finger-foods.png"
+type = "image"
+title = "finger foods image"
+
+[[generated]]
+id = "_g4jrcnh0gMyPXQ6G3ae5"
+uri = "file://artifacts/ochel-foods/src/assets/pastries.png"
+type = "image"
+title = "pastries image"
+
+[[generated]]
+id = "gWeE7Cojy3oD0d_l8DSQa"
+uri = "file://artifacts/ochel-foods/src/assets/donuts.png"
+type = "image"
+title = "donuts image"
+
+[[generated]]
+id = "KrT_WYSEnFYssJoJDXeMI"
+uri = "file://artifacts/ochel-foods/src/assets/banana-bread.png"
+type = "image"
+title = "banana bread image"
