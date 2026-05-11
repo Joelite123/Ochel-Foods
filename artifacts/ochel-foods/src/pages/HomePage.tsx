@@ -1,15 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Search, Star, Truck, Clock, Shield, Heart } from "lucide-react";
-import { categories, featuredProducts, allProducts } from "@/data/menuData";
+import { categories, featuredByCategory, allProducts } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 import redLogo from "@assets/O'Chel_Logo_Red_Transparent_1778493177439.png";
 import heroImg from "@/assets/hero-spread.png";
 
 const testimonials = [
-  { name: "Amaka O.", review: "Best pizza in Lagos! The Suya Pizza is absolutely incredible — can't get enough of it.", rating: 5 },
+  { name: "Amaka O.", review: "Best pizza in Ile Ife! The Suya Pizza is absolutely incredible — can't get enough of it.", rating: 5 },
   { name: "Tunde B.", review: "O'chel Foods never disappoints. Fast delivery, hot food, and those banana breads are amazing!", rating: 5 },
   { name: "Chidinma A.", review: "The Small Chops pack is perfect for parties. Everyone always asks where I got them from!", rating: 5 },
 ];
@@ -23,21 +23,57 @@ const features = [
 
 export default function HomePage() {
   const [search, setSearch] = useState("");
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState(featuredByCategory[0].id);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [tabsSticky, setTabsSticky] = useState(false);
+  const featuredSectionRef = useRef<HTMLElement>(null);
 
-  const filteredFeatured = search
+  const filteredResults = search
     ? allProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.description.toLowerCase().includes(search.toLowerCase())
       )
-    : featuredProducts;
+    : null;
+
+  const scrollToSection = (id: string) => {
+    setActiveTab(id);
+    const el = sectionRefs.current[id];
+    if (el) {
+      const offset = 130; // header + tabs height
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!featuredSectionRef.current) return;
+      const sectionTop = featuredSectionRef.current.getBoundingClientRect().top;
+      setTabsSticky(sectionTop <= 70);
+
+      // Update active tab based on scroll position
+      let currentId = featuredByCategory[0].id;
+      for (const cat of featuredByCategory) {
+        const el = sectionRefs.current[cat.id];
+        if (el) {
+          const top = el.getBoundingClientRect().top;
+          if (top <= 160) currentId = cat.id;
+        }
+      }
+      setActiveTab(currentId);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   return (
     <div className="min-h-screen">
       {/* HERO */}
       <section
-        className="relative min-h-[85vh] flex items-center overflow-hidden"
+        className="relative min-h-[88vh] flex items-center overflow-hidden"
         style={{
           backgroundImage: `url(${speckleBg})`,
           backgroundSize: "cover",
@@ -45,51 +81,62 @@ export default function HomePage() {
           backgroundColor: "#fff",
         }}
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/70 to-white/20" />
-        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/60 to-white/10" />
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -40 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              <img src={redLogo} alt="O'chel Foods" className="h-20 md:h-24 w-auto mb-6" />
-              <h1 className="font-chewy text-5xl md:text-6xl lg:text-7xl text-gray-900 leading-none mb-4">
-                Bold Flavors.<br />
-                <span className="text-[#E8192C]">Fast Delivery.</span>
-              </h1>
-              <p className="font-[Montserrat] text-lg text-gray-600 mb-8 max-w-md">
-                Authentic Nigerian flavors with a modern twist — delivered hot to your door. Pizza, Burgers, Shawarma, and more.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Link href="/pizza" data-testid="hero-cta-pizza">
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold px-8 py-4 rounded-2xl font-[Montserrat] text-base shadow-lg shadow-red-200 transition-colors"
-                  >
-                    Order Pizza
-                  </motion.button>
-                </Link>
-                <Link href="/burgers" data-testid="hero-cta-burgers">
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="bg-[#FFB800] hover:bg-[#e5a600] text-black font-bold px-8 py-4 rounded-2xl font-[Montserrat] text-base shadow-lg shadow-yellow-200 transition-colors"
-                  >
-                    View Full Menu
-                  </motion.button>
-                </Link>
-              </div>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="hidden lg:block"
-            >
-              <img src={heroImg} alt="O'chel Foods spread" className="w-full max-w-lg mx-auto rounded-3xl shadow-2xl object-cover aspect-square" />
-            </motion.div>
+          <motion.div
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <img src={redLogo} alt="O'chel Foods" className="h-20 md:h-24 w-auto mb-6" />
+            <h1 className="font-chewy text-5xl md:text-7xl text-gray-900 leading-none mb-4">
+              Bold Flavors.<br />
+              <span className="text-[#E8192C]">Fast Delivery.</span>
+            </h1>
+            <p className="font-[Montserrat] text-lg text-gray-600 mb-8 max-w-md">
+              Irresistible food crafted with passion and delivered hot to your door. Pizza, Burgers, Shawarma, and more — right here in Ile Ife.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/pizza" data-testid="hero-cta-pizza">
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold px-8 py-4 rounded-2xl font-[Montserrat] text-base shadow-lg shadow-red-200 transition-colors"
+                >
+                  Order Pizza
+                </motion.button>
+              </Link>
+              <a
+                href="https://wa.me/2349056351651"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="hero-cta-order"
+              >
+                <motion.button
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="bg-[#FFB800] hover:bg-[#e5a600] text-black font-bold px-8 py-4 rounded-2xl font-[Montserrat] text-base shadow-lg shadow-yellow-200 transition-colors"
+                >
+                  Order Now
+                </motion.button>
+              </a>
+            </div>
+          </motion.div>
+
+          {/* Hero food image — right column */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="hidden lg:flex justify-center"
+          >
+            <img
+              src={heroImg}
+              alt="O'chel Foods spread"
+              className="w-full max-w-lg rounded-3xl shadow-2xl object-cover aspect-square"
+            />
+          </motion.div>
           </div>
         </div>
       </section>
@@ -138,24 +185,56 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SEARCH + FEATURED */}
+      {/* FEATURED — with sticky horizontal tab menu */}
       <section
-        ref={menuRef}
-        className="py-14"
-        style={{ backgroundImage: `url(${speckleBg})`, backgroundSize: "cover", backgroundColor: "#fff" }}
+        ref={featuredSectionRef}
+        className="pb-14"
+        style={{
+          backgroundImage: `url(${speckleBg})`,
+          backgroundSize: "cover",
+          backgroundColor: "#fff",
+        }}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Section title */}
+        <div className="pt-14 pb-4 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-8"
           >
-            <h2 className="font-chewy text-4xl md:text-5xl text-gray-900 mb-2">Featured Items</h2>
-            <p className="font-[Montserrat] text-gray-500">Customer favorites you'll love</p>
+            <h2 className="font-chewy text-4xl md:text-5xl text-gray-900 mb-1">Featured Items</h2>
+            <p className="font-[Montserrat] text-gray-500">Customer favorites — tap a category to jump there</p>
           </motion.div>
+        </div>
 
-          <div className="max-w-lg mx-auto mb-10">
+        {/* Sticky horizontal category tabs */}
+        <div
+          ref={tabsRef}
+          className={`${tabsSticky ? "sticky top-[70px] z-40" : ""} bg-white/90 backdrop-blur border-b border-gray-100 shadow-sm`}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex gap-1.5 overflow-x-auto py-3 scrollbar-hide">
+              {featuredByCategory.map((cat) => (
+                <button
+                  key={cat.id}
+                  data-testid={`featured-tab-${cat.id}`}
+                  onClick={() => scrollToSection(cat.id)}
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold font-[Montserrat] transition-all whitespace-nowrap ${
+                    activeTab === cat.id
+                      ? "bg-[#E8192C] text-white shadow-md"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-lg mx-auto my-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -164,30 +243,70 @@ export default function HomePage() {
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-featured"
                 placeholder="Search our menu..."
-                className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
+                className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm bg-white"
               />
             </div>
           </div>
 
-          {filteredFeatured.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
-              <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">
-                Clear search
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {filteredFeatured.map((product, idx) => (
-                <motion.div
-                  key={product.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: idx * 0.06 }}
+          {/* Search results */}
+          {search && filteredResults ? (
+            filteredResults.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
+                <button
+                  onClick={() => setSearch("")}
+                  className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline"
                 >
-                  <ProductCard product={product} />
-                </motion.div>
+                  Clear search
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {filteredResults.map((product, idx) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.04 }}
+                  >
+                    <ProductCard product={product} />
+                  </motion.div>
+                ))}
+              </div>
+            )
+          ) : (
+            /* Category sections */
+            <div className="space-y-14">
+              {featuredByCategory.map((cat) => (
+                <div
+                  key={cat.id}
+                  id={cat.id}
+                  ref={(el) => { sectionRefs.current[cat.id] = el; }}
+                >
+                  <div className="flex items-center justify-between mb-5">
+                    <h3 className="font-chewy text-3xl text-gray-900">{cat.label}</h3>
+                    <Link
+                      href={categories.find((c) => c.name.split(" ")[0] === cat.label.split(" ")[0])?.slug || "/"}
+                      className="text-[#E8192C] font-semibold font-[Montserrat] text-sm hover:underline"
+                      data-testid={`link-see-all-${cat.id}`}
+                    >
+                      See all →
+                    </Link>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {cat.products.map((product, idx) => (
+                      <motion.div
+                        key={product.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: idx * 0.08 }}
+                      >
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -230,7 +349,11 @@ export default function HomePage() {
       {/* TESTIMONIALS */}
       <section
         className="py-14"
-        style={{ backgroundImage: `url(${speckleBg})`, backgroundSize: "cover", backgroundColor: "#fff" }}
+        style={{
+          backgroundImage: `url(${speckleBg})`,
+          backgroundSize: "cover",
+          backgroundColor: "#fff",
+        }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
@@ -271,18 +394,20 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
             <div>
-              <h3 className="font-chewy text-2xl text-[#FFB800] mb-1">Order Now</h3>
-              <p className="font-[Montserrat] text-white/70 text-sm">Reach us on WhatsApp and we'll get your order ready</p>
+              <h3 className="font-chewy text-2xl text-[#FFB800] mb-1">Ready to Order?</h3>
+              <p className="font-[Montserrat] text-white/70 text-sm">
+                Reach us on WhatsApp — we're serving Ile Ife and surrounding areas
+              </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
               <a
                 href="https://wa.me/2349056351651"
                 target="_blank"
                 rel="noopener noreferrer"
-                data-testid="link-whatsapp-strip"
-                className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-3 rounded-xl font-[Montserrat] text-sm transition-colors"
+                data-testid="link-order-now-strip"
+                className="bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold px-6 py-3 rounded-xl font-[Montserrat] text-sm transition-colors"
               >
-                +234 905 635 1651
+                Order Now
               </a>
               <a
                 href="https://instagram.com/Ochel_ng"

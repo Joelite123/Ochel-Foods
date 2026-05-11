@@ -1,11 +1,13 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/contexts/CartContext";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import CartPanel from "@/components/ui/CartPanel";
+import FloatingWhatsApp from "@/components/ui/FloatingWhatsApp";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/HomePage";
 import PizzaPage from "@/pages/PizzaPage";
@@ -37,6 +39,7 @@ function Router() {
       </main>
       <Footer />
       <CartPanel />
+      <FloatingWhatsApp />
     </div>
   );
 }
@@ -50,6 +53,7 @@ function App() {
             <Router />
           </WouterRouter>
           <Toaster />
+          <SonnerToaster position="top-center" richColors />
         </TooltipProvider>
       </CartProvider>
     </QueryClientProvider>

@@ -13,13 +13,13 @@ export default function PizzaPage() {
     ? pizzaProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description.toLowerCase().includes(search.toLowerCase())
+          p.description.toLowerCase().includes(search.toLowerCase()) ||
+          (p.ingredients || []).some((ing) => ing.toLowerCase().includes(search.toLowerCase()))
       )
     : pizzaProducts;
 
   return (
     <div className="min-h-screen">
-      {/* Page Header */}
       <section
         className="py-14 text-center relative"
         style={{ backgroundImage: `url(${speckleBg})`, backgroundSize: "cover", backgroundColor: "#E8192C" }}
@@ -30,7 +30,7 @@ export default function PizzaPage() {
             <span className="font-[Montserrat] text-white/70 text-sm uppercase tracking-widest">Our Menu</span>
             <h1 className="font-chewy text-5xl md:text-6xl text-white mt-1 mb-3">Pizza</h1>
             <p className="font-[Montserrat] text-white/80 max-w-md mx-auto text-sm">
-              Hand-crafted pizzas with bold Nigerian flavors. Choose your size and toppings.
+              Hand-crafted pizzas with bold, savory flavors. Choose your size and customize your toppings.
             </p>
           </motion.div>
         </div>
@@ -40,8 +40,7 @@ export default function PizzaPage() {
 
       <section className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Search */}
-          <div className="max-w-md mx-auto mb-10">
+          <div className="max-w-md mx-auto mb-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -49,16 +48,15 @@ export default function PizzaPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-pizza"
-                placeholder="Search pizzas..."
+                placeholder="Search pizzas or ingredients..."
                 className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
               />
             </div>
           </div>
 
-          {/* Extras note */}
           <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-8 max-w-md">
             <p className="font-[Montserrat] text-sm text-gray-700">
-              <span className="font-bold text-[#E8192C]">Extras:</span> Extra Cheese ₦1,000 | Extra Toppings ₦1,000
+              <span className="font-bold text-[#E8192C]">Extras:</span> Extra Cheese ₦1,000 · Extra Toppings ₦1,000
             </p>
           </div>
 

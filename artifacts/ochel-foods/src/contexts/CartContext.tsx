@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type CartItem = {
-  id: string; // generate a unique id for the cart item entry
+  id: string;
   productId: string;
   name: string;
   category: string;
@@ -9,6 +9,7 @@ export type CartItem = {
   price: number;
   quantity: number;
   extras?: { name: string; quantity: number; price: number }[];
+  removedIngredients?: string[];
   note?: string;
   imageUrl?: string;
 };
@@ -23,6 +24,7 @@ type CartContextType = {
   setIsCartOpen: (open: boolean) => void;
   subtotal: number;
   deliveryFee: number;
+  setDeliveryFee: (fee: number) => void;
   total: number;
 };
 
@@ -33,30 +35,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem("ochel-cart");
       return stored ? JSON.parse(stored) : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   });
-  
+
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [deliveryFee, setDeliveryFee] = useState(500);
 
   useEffect(() => {
     localStorage.setItem("ochel-cart", JSON.stringify(items));
   }, [items]);
 
   const addItem = (item: Omit<CartItem, "id">) => {
-    // Check if an identical item exists (same product, size, extras, note)
     const existingIndex = items.findIndex((i) => {
       if (i.productId !== item.productId) return false;
       if (i.size !== item.size) return false;
       if (i.note !== item.note) return false;
-      
+
       const itemExtras = item.extras || [];
       const iExtras = i.extras || [];
       if (itemExtras.length !== iExtras.length) return false;
-      
-      return itemExtras.every(ie => {
-        const found = iExtras.find(ixe => ixe.name === ie.name);
+
+      const iRemoved = i.removedIngredients || [];
+      const itemRemoved = item.removedIngredients || [];
+      if (iRemoved.length !== itemRemoved.length) return false;
+      if (!iRemoved.every((r) => itemRemoved.includes(r))) return false;
+
+      return itemExtras.every((ie) => {
+        const found = iExtras.find((ixe) => ixe.name === ie.name);
         return found && found.quantity === ie.quantity;
       });
     });
@@ -68,11 +75,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } else {
       setItems([...items, { ...item, id: Math.random().toString(36).substr(2, 9) }]);
     }
-    setIsCartOpen(true);
+    // Do NOT auto-open cart — user browses, then opens manually
   };
 
   const removeItem = (id: string) => {
-    setItems(items.filter(i => i.id !== id));
+    setItems(items.filter((i) => i.id !== id));
   };
 
   const updateQuantity = (id: string, quantity: number) => {
@@ -80,7 +87,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeItem(id);
       return;
     }
-    setItems(items.map(i => i.id === id ? { ...i, quantity } : i));
+    setItems(items.map((i) => (i.id === id ? { ...i, quantity } : i)));
   };
 
   const clearCart = () => {
@@ -90,29 +97,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const subtotal = items.reduce((acc, item) => {
     let itemTotal = item.price;
     if (item.extras) {
-      item.extras.forEach(extra => {
+      item.extras.forEach((extra) => {
         itemTotal += extra.price * extra.quantity;
       });
     }
-    return acc + (itemTotal * item.quantity);
+    return acc + itemTotal * item.quantity;
   }, 0);
 
-  const deliveryFee = 500;
   const total = subtotal + deliveryFee;
 
   return (
-    <CartContext.Provider value={{
-      items,
-      addItem,
-      removeItem,
-      updateQuantity,
-      clearCart,
-      isCartOpen,
-      setIsCartOpen,
-      subtotal,
-      deliveryFee,
-      total
-    }}>
+    <CartContext.Provider
+      value={{
+        items,
+        addItem,
+        removeItem,
+        updateQuantity,
+        clearCart,
+        isCartOpen,
+        setIsCartOpen,
+        subtotal,
+        deliveryFee,
+        setDeliveryFee,
+        total,
+      }}
+    >
       {children}
     </CartContext.Provider>
   );

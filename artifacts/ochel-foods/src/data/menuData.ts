@@ -26,6 +26,7 @@ export type Product = {
   basePrice: number;
   sizes?: ProductSize[];
   extras?: ProductExtra[];
+  ingredients?: string[];
   note?: string;
   tag?: string;
 };
@@ -47,7 +48,7 @@ export const categories: Category[] = [
   { id: "baked-goodies", name: "Baked Goodies", slug: "/baked-goodies", imageUrl: bananaBreadImg, color: "#FFB800" },
 ];
 
-export const pizzaExtras: ProductExtra[] = [
+const pizzaExtras: ProductExtra[] = [
   { name: "Extra Cheese", price: 1000 },
   { name: "Extra Toppings", price: 1000 },
 ];
@@ -66,6 +67,7 @@ export const pizzaProducts: Product[] = [
       { label: "Large", description: "12 inches", price: 9500 },
     ],
     extras: pizzaExtras,
+    ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Sautéed Chicken", "Sausage", "BBQ Sauce", "Green Capsicum"],
     tag: "Popular",
   },
   {
@@ -81,11 +83,12 @@ export const pizzaProducts: Product[] = [
       { label: "Large", description: "12 inches", price: 9500 },
     ],
     extras: pizzaExtras,
+    ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Beef", "Red Bonnet Pepper", "Green Capsicum"],
   },
   {
     id: "pizza-3",
     name: "Suya Pizza",
-    description: "Suya (Mutton), authentic Suya Spice, and green capsicum — Nigerian flavors on a pizza!",
+    description: "Suya (Mutton), authentic Suya Spice, and green capsicum — savory street flavors on a pizza!",
     category: "pizza",
     imageUrl: pizzaImg,
     basePrice: 7500,
@@ -95,6 +98,7 @@ export const pizzaProducts: Product[] = [
       { label: "Large", description: "12 inches", price: 9500 },
     ],
     extras: pizzaExtras,
+    ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Suya (Mutton)", "Suya Spice", "Green Capsicum"],
     tag: "Signature",
   },
   {
@@ -110,6 +114,7 @@ export const pizzaProducts: Product[] = [
       { label: "Large", description: "12 inches", price: 10000 },
     ],
     extras: pizzaExtras,
+    ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Chicken", "Beef", "BBQ Sauce", "Suya Spice", "Green Capsicum"],
     tag: "Best Value",
   },
 ];
@@ -126,6 +131,7 @@ export const burgerProducts: Product[] = [
       { name: "Extra Chicken", price: 2000 },
       { name: "Extra Ketchup", price: 300 },
     ],
+    ingredients: ["Burger Bun", "Crispy Chicken", "Creamy Sauce", "Lettuce"],
     tag: "Popular",
   },
   {
@@ -139,6 +145,7 @@ export const burgerProducts: Product[] = [
       { name: "Extra Cheese", price: 500 },
       { name: "Extra Chicken", price: 2000 },
     ],
+    ingredients: ["Burger Bun", "Crispy Chicken", "Creamy Sauce", "Cheddar Cheese", "Lettuce"],
   },
   {
     id: "burger-3",
@@ -151,6 +158,7 @@ export const burgerProducts: Product[] = [
       { name: "Extra Sausage", price: 500 },
       { name: "Extra Sauce", price: 200 },
     ],
+    ingredients: ["Shawarma Bread", "Chicken", "Beef", "Sausage", "Mixed Veggies", "Creamy Sauce"],
     tag: "Filling",
   },
 ];
@@ -167,6 +175,7 @@ export const shawarmaProducts: Product[] = [
       { name: "Extra Sauce", price: 200 },
       { name: "Extra Veggies", price: 300 },
     ],
+    ingredients: ["Pita Bread", "Grilled Chicken", "Garlic Sauce", "Cucumber", "Tomato", "Lettuce", "Onion"],
     tag: "Popular",
   },
   {
@@ -180,6 +189,7 @@ export const shawarmaProducts: Product[] = [
       { name: "Extra Sauce", price: 200 },
       { name: "Extra Beef", price: 500 },
     ],
+    ingredients: ["Pita Bread", "Beef Strips", "Garlic Sauce", "Cucumber", "Tomato", "Lettuce", "Onion"],
   },
   {
     id: "shawarma-3",
@@ -192,6 +202,7 @@ export const shawarmaProducts: Product[] = [
       { name: "Extra Sauce", price: 200 },
       { name: "Extra Protein", price: 700 },
     ],
+    ingredients: ["Pita Bread", "Grilled Chicken", "Beef Strips", "Garlic Sauce", "Cucumber", "Tomato", "Lettuce", "Onion"],
     tag: "Best Seller",
   },
   {
@@ -205,6 +216,7 @@ export const shawarmaProducts: Product[] = [
       { name: "Extra Sausage", price: 500 },
       { name: "Extra Sauce", price: 200 },
     ],
+    ingredients: ["Pita Bread", "Chicken", "Beef", "Sausage (x2)", "Garlic Sauce", "Cucumber", "Tomato", "Lettuce", "Onion"],
     tag: "XL",
   },
 ];
@@ -222,6 +234,7 @@ export const fingerFoodProducts: Product[] = [
       { name: "Extra Chips", price: 1500 },
       { name: "Extra Ketchup", price: 300 },
     ],
+    ingredients: ["Crunchy Chicken", "Crispy Chips", "Ketchup"],
     tag: "Popular",
   },
   {
@@ -235,6 +248,7 @@ export const fingerFoodProducts: Product[] = [
       { name: "Extra Chicken", price: 2000 },
       { name: "Extra Ketchup", price: 300 },
     ],
+    ingredients: ["Crunchy Fried Chicken (x2)", "Ketchup"],
   },
   {
     id: "ff-3",
@@ -243,14 +257,16 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 2000,
+    ingredients: ["Tigernuts", "Coconut", "Ginger"],
   },
   {
     id: "ff-4",
     name: "Fruity Zobo Drink",
-    description: "Roselle, Pineapple, Watermelon, Cucumber, Herbs & Spices. A refreshing Nigerian classic.",
+    description: "Roselle, Pineapple, Watermelon, Cucumber, Herbs & Spices. A refreshing classic.",
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 500,
+    ingredients: ["Roselle (Zobo leaves)", "Pineapple", "Watermelon", "Cucumber", "Herbs & Spices"],
     tag: "Refreshing",
   },
   {
@@ -260,6 +276,7 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 7300,
+    ingredients: ["Crispy Chicken Burger", "Crunchy Chicken", "Crispy Chips"],
     tag: "Combo",
   },
   {
@@ -269,6 +286,7 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 9300,
+    ingredients: ["Crispy Chicken Burger", "Crunchy Chicken", "Crispy Chips", "Tigernut Drink"],
     tag: "Combo",
   },
   {
@@ -278,6 +296,7 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 5300,
+    ingredients: ["Shawarma", "Tigernut Drink"],
     tag: "Combo",
   },
   {
@@ -287,6 +306,7 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 5800,
+    ingredients: ["Crunchy Chicken", "Crispy Chips", "Tigernut Drink"],
     tag: "Combo",
   },
   {
@@ -296,6 +316,7 @@ export const fingerFoodProducts: Product[] = [
     category: "finger-foods",
     imageUrl: fingerFoodsImg,
     basePrice: 5300,
+    ingredients: ["Crispy Chicken Burger", "Tigernut Drink"],
     tag: "Combo",
   },
 ];
@@ -317,6 +338,7 @@ export const pastryProducts: Product[] = [
       { name: "Puff Puff", price: 100 },
       { name: "Ketchup", price: 300 },
     ],
+    ingredients: ["Springrolls (x3)", "Samosas (x3)", "Crispy Chicken (x1)", "Puff Puff (x4)"],
     tag: "Small Pack",
   },
   {
@@ -334,6 +356,7 @@ export const pastryProducts: Product[] = [
       { name: "Puff Puff", price: 100 },
       { name: "Ketchup", price: 300 },
     ],
+    ingredients: ["Springrolls (x5)", "Samosas (x5)", "Crispy Chicken (x2)", "Puff Puff (x10)"],
     tag: "Medium Pack",
   },
   {
@@ -351,6 +374,7 @@ export const pastryProducts: Product[] = [
       { name: "Puff Puff", price: 100 },
       { name: "Ketchup", price: 300 },
     ],
+    ingredients: ["Springrolls (x12)", "Samosas (x12)", "Crispy Chicken (x2)", "Corn Dogs (x5)", "Puff Puff (x20)"],
     tag: "Party Pack",
   },
   {
@@ -360,6 +384,7 @@ export const pastryProducts: Product[] = [
     category: "pastries",
     imageUrl: donutsImg,
     basePrice: 400,
+    ingredients: ["Flour", "Sugar", "Yeast", "Butter", "Eggs", "Milk"],
     note: "MOQ: 20 pieces. Orders above 50 pieces get 5% discount.",
   },
   {
@@ -369,6 +394,7 @@ export const pastryProducts: Product[] = [
     category: "pastries",
     imageUrl: donutsImg,
     basePrice: 500,
+    ingredients: ["Flour", "Sugar", "Yeast", "Butter", "Eggs", "Milk", "Jam Filling"],
     note: "MOQ: 20 pieces. Orders above 50 pieces get 5% discount.",
     tag: "Fan Favorite",
   },
@@ -379,6 +405,7 @@ export const pastryProducts: Product[] = [
     category: "pastries",
     imageUrl: donutsImg,
     basePrice: 600,
+    ingredients: ["Flour", "Sugar", "Yeast", "Butter", "Eggs", "Milk", "Chocolate Filling"],
     note: "MOQ: 20 pieces. Orders above 50 pieces get 5% discount.",
   },
   {
@@ -388,6 +415,7 @@ export const pastryProducts: Product[] = [
     category: "pastries",
     imageUrl: donutsImg,
     basePrice: 500,
+    ingredients: ["Flour", "Sugar", "Yeast", "Butter", "Eggs", "Milk"],
     note: "MOQ: 20 pieces. Orders above 50 pieces get 5% discount.",
     tag: "Trending",
   },
@@ -398,6 +426,7 @@ export const pastryProducts: Product[] = [
     category: "pastries",
     imageUrl: pastriesImg,
     basePrice: 1500,
+    ingredients: ["Pastry Crust", "Minced Meat", "Onion", "Carrot", "Potato", "Seasoning"],
     note: "Bulk orders: MOQ of 20 pieces. Entitled to 5% discount above 50 pieces.",
   },
 ];
@@ -415,6 +444,7 @@ export const bakedGoodiesProducts: Product[] = [
       { label: "Set of 2 Mini Loaves", price: 2500 },
       { label: "Set of 4 Mini Loaves", price: 5000 },
     ],
+    ingredients: ["Ripe Banana", "Chocolate Chunks", "Chocolate Chips", "Flour", "Butter", "Sugar", "Eggs", "Vanilla"],
     tag: "Popular",
   },
   {
@@ -429,6 +459,7 @@ export const bakedGoodiesProducts: Product[] = [
       { label: "Set of 2 Mini Loaves", price: 2500 },
       { label: "Set of 4 Mini Loaves", price: 5000 },
     ],
+    ingredients: ["Ripe Banana", "Butter Toasted Coconut Flakes", "Flour", "Butter", "Sugar", "Eggs", "Vanilla"],
   },
   {
     id: "baked-3",
@@ -442,6 +473,7 @@ export const bakedGoodiesProducts: Product[] = [
       { label: "Set of 2 Mini Loaves", price: 2500 },
       { label: "Set of 4 Mini Loaves", price: 5000 },
     ],
+    ingredients: ["Ripe Banana", "Candied Cashew Nuts", "Cinnamon", "Flour", "Butter", "Sugar", "Eggs", "Vanilla"],
     tag: "Signature",
   },
   {
@@ -455,6 +487,7 @@ export const bakedGoodiesProducts: Product[] = [
       { label: "Set of 2 Mini Loaves", price: 3000 },
       { label: "Set of 4 Mini Loaves", price: 6000 },
     ],
+    ingredients: ["Ripe Banana", "Dark Chocolate", "Coconut Flakes", "Cashew Nuts", "Flour", "Butter", "Sugar", "Eggs"],
     tag: "Best Value",
   },
 ];
@@ -468,15 +501,21 @@ export const allProducts: Product[] = [
   ...bakedGoodiesProducts,
 ];
 
-export const featuredProducts: Product[] = [
-  pizzaProducts[0],
-  pizzaProducts[2],
-  burgerProducts[0],
-  burgerProducts[1],
-  shawarmaProducts[2],
-  fingerFoodProducts[0],
-  pastryProducts[1],
-  bakedGoodiesProducts[0],
+export const featuredByCategory = [
+  { label: "Pizza", id: "featured-pizza", products: pizzaProducts.slice(0, 2) },
+  { label: "Burgers", id: "featured-burgers", products: burgerProducts.slice(0, 2) },
+  { label: "Shawarma", id: "featured-shawarma", products: shawarmaProducts.slice(0, 2) },
+  { label: "Finger Foods", id: "featured-finger-foods", products: fingerFoodProducts.slice(0, 2) },
+  { label: "Pastries", id: "featured-pastries", products: pastryProducts.slice(0, 2) },
+  { label: "Baked Goodies", id: "featured-baked", products: bakedGoodiesProducts.slice(0, 2) },
+];
+
+export const DELIVERY_ZONES = [
+  { label: "Within Ile Ife Central (0–3km)", price: 500 },
+  { label: "Oranmiyan / Lagere / Enuwa (3–6km)", price: 700 },
+  { label: "OAU Campus / Mayfair / Opa (6–10km)", price: 1000 },
+  { label: "Moro / Gbongan Road (10–20km)", price: 1500 },
+  { label: "Outside Ile Ife (20km+)", price: 2500 },
 ];
 
 export function formatPrice(price: number): string {

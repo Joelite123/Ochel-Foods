@@ -9,17 +9,17 @@ export default function Footer() {
           <div className="md:col-span-2">
             <img src={whiteLogo} alt="O'chel Foods" className="h-14 w-auto mb-4" />
             <p className="text-gray-400 text-sm leading-relaxed font-[Montserrat] max-w-xs">
-              Bold flavors, fast delivery. Born from a passion for authentic Nigerian food with a modern twist. Every bite tells our story.
+              Bold flavors, fast delivery. Born from a passion for savory, delicious food with a modern twist. Every bite tells our story.
             </p>
-            <div className="mt-4 flex gap-4">
+            <div className="mt-4 flex gap-4 flex-wrap">
               <a
                 href="https://wa.me/2349056351651"
                 target="_blank"
                 rel="noopener noreferrer"
-                data-testid="link-whatsapp-footer"
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full text-sm font-semibold transition-colors font-[Montserrat]"
+                data-testid="link-order-now-footer"
+                className="flex items-center gap-2 bg-[#E8192C] hover:bg-[#c8151f] text-white px-4 py-2 rounded-full text-sm font-semibold transition-colors font-[Montserrat]"
               >
-                WhatsApp Order
+                Order Now
               </a>
               <a
                 href="https://instagram.com/Ochel_ng"
@@ -73,7 +73,11 @@ export default function Footer() {
                 </a>
               </li>
               <li>
-                <p className="text-gray-400 text-xs mt-2">Payment validates order. Delivery charges apply.</p>
+                <p className="text-gray-400">Address</p>
+                <p className="text-white text-xs leading-relaxed">Opposite The Polytechnic, Adedoyin Way, Parakin, Ile Ife</p>
+              </li>
+              <li>
+                <p className="text-gray-400 text-xs mt-1">Payment validates order. Delivery charges apply.</p>
               </li>
             </ul>
           </div>

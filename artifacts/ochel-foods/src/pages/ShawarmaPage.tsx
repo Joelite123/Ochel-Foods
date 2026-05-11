@@ -13,7 +13,8 @@ export default function ShawarmaPage() {
     ? shawarmaProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description.toLowerCase().includes(search.toLowerCase())
+          p.description.toLowerCase().includes(search.toLowerCase()) ||
+          (p.ingredients || []).some((ing) => ing.toLowerCase().includes(search.toLowerCase()))
       )
     : shawarmaProducts;
 
@@ -29,7 +30,7 @@ export default function ShawarmaPage() {
             <span className="font-[Montserrat] text-black/60 text-sm uppercase tracking-widest">Our Menu</span>
             <h1 className="font-chewy text-5xl md:text-6xl text-black mt-1 mb-3">Shawarma</h1>
             <p className="font-[Montserrat] text-black/70 max-w-md mx-auto text-sm">
-              Wrapped, rolled, and packed with flavor. Our shawarma is the real deal.
+              Wrapped, rolled, and packed with savory flavor. Our shawarma is irresistibly good.
             </p>
           </motion.div>
         </div>
@@ -47,7 +48,7 @@ export default function ShawarmaPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-shawarma"
-                placeholder="Search shawarma..."
+                placeholder="Search shawarma or ingredients..."
                 className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
               />
             </div>

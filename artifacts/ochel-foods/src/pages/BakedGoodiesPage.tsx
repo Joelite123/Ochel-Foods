@@ -13,7 +13,8 @@ export default function BakedGoodiesPage() {
     ? bakedGoodiesProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
-          p.description.toLowerCase().includes(search.toLowerCase())
+          p.description.toLowerCase().includes(search.toLowerCase()) ||
+          (p.ingredients || []).some((ing) => ing.toLowerCase().includes(search.toLowerCase()))
       )
     : bakedGoodiesProducts;
 
@@ -39,7 +40,7 @@ export default function BakedGoodiesPage() {
 
       <section className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-md mx-auto mb-10">
+          <div className="max-w-md mx-auto mb-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -47,16 +48,15 @@ export default function BakedGoodiesPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-baked"
-                placeholder="Search baked goodies..."
+                placeholder="Search baked goodies or ingredients..."
                 className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
               />
             </div>
           </div>
 
-          {/* Delivery note */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-10 max-w-lg">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-8 max-w-lg">
             <p className="font-[Montserrat] text-sm text-gray-700">
-              <span className="font-bold text-[#FFB800]">Note:</span> Payment validates order. Delivery charges apply.
+              <span className="font-bold text-[#FFB800]">Note:</span> Payment validates order. Delivery charges apply. Mini loaves are freshly baked on order.
             </p>
           </div>
 

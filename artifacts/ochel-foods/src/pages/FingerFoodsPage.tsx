@@ -6,8 +6,8 @@ import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 
-const individual = fingerFoodProducts.filter(p => !p.id.includes("combo"));
-const combos = fingerFoodProducts.filter(p => p.id.includes("combo"));
+const individual = fingerFoodProducts.filter((p) => !p.id.includes("combo"));
+const combos = fingerFoodProducts.filter((p) => p.id.includes("combo"));
 
 export default function FingerFoodsPage() {
   const [search, setSearch] = useState("");
@@ -17,7 +17,8 @@ export default function FingerFoodsPage() {
       ? products.filter(
           (p) =>
             p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.description.toLowerCase().includes(search.toLowerCase())
+            p.description.toLowerCase().includes(search.toLowerCase()) ||
+            (p.ingredients || []).some((ing) => ing.toLowerCase().includes(search.toLowerCase()))
         )
       : products;
 
@@ -46,7 +47,7 @@ export default function FingerFoodsPage() {
 
       <section className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-md mx-auto mb-10">
+          <div className="max-w-md mx-auto mb-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -54,16 +55,15 @@ export default function FingerFoodsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-finger-foods"
-                placeholder="Search finger foods..."
+                placeholder="Search finger foods or ingredients..."
                 className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
               />
             </div>
           </div>
 
-          {/* Extras note */}
           <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-8 max-w-lg">
             <p className="font-[Montserrat] text-sm text-gray-700">
-              <span className="font-bold text-[#E8192C]">Extras:</span> Crunchy Chicken ₦2,000 | Extra Chips ₦1,500 | Ketchup ₦300
+              <span className="font-bold text-[#E8192C]">Extras:</span> Crunchy Chicken ₦2,000 · Extra Chips ₦1,500 · Ketchup ₦300
             </p>
           </div>
 
