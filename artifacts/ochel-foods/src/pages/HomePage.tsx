@@ -206,20 +206,15 @@ export default function HomePage() {
                 Order Pizza
               </motion.button>
             </Link>
-            <a
-              href="https://wa.me/2349056351651"
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="hero-cta-order"
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => scrollToSection(featuredByCategory[0].id)}
+              data-testid="hero-cta-menu"
+              className="bg-[#FFB800] hover:bg-[#e5a600] text-black font-bold px-8 py-3.5 rounded-2xl font-[Montserrat] text-base shadow-md shadow-yellow-200 transition-colors"
             >
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                className="bg-[#FFB800] hover:bg-[#e5a600] text-black font-bold px-8 py-3.5 rounded-2xl font-[Montserrat] text-base shadow-md shadow-yellow-200 transition-colors"
-              >
-                Order Now
-              </motion.button>
-            </a>
+              View Menu
+            </motion.button>
           </div>
 
           {/* Search */}
