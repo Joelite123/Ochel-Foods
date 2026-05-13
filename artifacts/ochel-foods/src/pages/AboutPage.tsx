@@ -1,8 +1,6 @@
 import { motion } from "framer-motion";
-import { Heart, Star, Users, Award, MapPin, Phone, Instagram } from "lucide-react";
+import { Heart, Star, Users, Award, MapPin } from "lucide-react";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
-import redLogo from "@assets/O'Chel_Logo_Red_Transparent_1778493177439.png";
-import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
 const values = [
   { icon: Heart, title: "Made with Passion", desc: "Every dish is crafted with love and dedication to quality. We treat each order like it's going to our own family." },
@@ -14,98 +12,6 @@ const values = [
 export default function AboutPage() {
   return (
     <div className="min-h-screen">
-      {/* Hero */}
-      <section
-        className="py-20 text-center relative"
-        style={{ backgroundImage: `url(${speckleBg})`, backgroundSize: "cover", backgroundColor: "#fff" }}
-      >
-        <div className="max-w-7xl mx-auto px-4 relative z-10">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <img src={redLogo} alt="O'chel Foods" className="h-20 w-auto mx-auto mb-6" />
-            <h1 className="font-chewy text-5xl md:text-6xl text-gray-900 mb-4">
-              Our <span className="text-[#E8192C]">Story</span>
-            </h1>
-            <p className="font-[Montserrat] text-gray-600 max-w-2xl mx-auto text-base leading-relaxed">
-              Born from a deep love for food and a desire to bring bold, savory flavors to your doorstep — with a modern, exciting twist.
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Story */}
-      <section className="py-16 bg-white">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="font-chewy text-4xl text-gray-900 mb-4">Who We Are</h2>
-              <div className="space-y-4 font-[Montserrat] text-gray-600 text-sm leading-relaxed">
-                <p>
-                  O'chel Foods was born from a passion for delivering bold, savory flavors with a modern twist. We believe that great food should be fun, fresh, and fast — delivered right to your door with a smile.
-                </p>
-                <p>
-                  Our name, O'chel, reflects our spirit — vibrant, warm, and full of character. From our signature Suya Pizza that fuses beloved street food tradition with a modern take, to our freshly baked banana breads and crispy small chops, every item on our menu is a celebration of flavor.
-                </p>
-                <p>
-                  We source fresh, quality ingredients and prepare each order with care. Whether you're ordering for a family dinner, a party, or just treating yourself — we want every O'chel meal to be an experience worth sharing.
-                </p>
-              </div>
-
-              {/* Address */}
-              <div className="mt-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-[#E8192C] flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-chewy text-[#E8192C] text-base mb-0.5">Our Location</p>
-                  <p className="font-[Montserrat] text-sm text-gray-700">
-                    Opposite The Polytechnic, Adedoyin Way, Parakin, Ile Ife
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              className="rounded-3xl overflow-hidden shadow-2xl"
-              style={{ backgroundImage: `url(${speckleBg})`, backgroundSize: "cover" }}
-            >
-              <div className="bg-[#E8192C]/90 p-8 text-center">
-                <img src={whiteLogo} alt="O'chel Foods" className="h-16 w-auto mx-auto mb-6" />
-                <p className="font-chewy text-2xl text-white leading-relaxed">
-                  "Bold Flavors. Fast Delivery. Real Good Food."
-                </p>
-                <div className="mt-6 pt-6 border-t border-white/20 space-y-3">
-                  <a
-                    href="https://wa.me/2349056351651"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="link-whatsapp-about"
-                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl py-3 px-4 transition-colors"
-                  >
-                    <Phone className="w-4 h-4 text-[#FFB800]" />
-                    <span className="text-white font-bold font-[Montserrat]">+234 905 635 1651</span>
-                  </a>
-                  <a
-                    href="https://instagram.com/Ochel_ng"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="link-instagram-about"
-                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 rounded-xl py-3 px-4 transition-colors"
-                  >
-                    <Instagram className="w-4 h-4 text-[#FFB800]" />
-                    <span className="text-white font-bold font-[Montserrat]">@Ochel_ng</span>
-                  </a>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
       {/* Google Maps */}
       <section className="bg-gray-50 py-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
