@@ -1,17 +1,126 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown, Clock, Info } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { DELIVERY_ZONES, formatPrice } from "@/data/menuData";
 
+/* ─────────────────────────────────────────────
+   Delivery time-slot helpers
+───────────────────────────────────────────── */
+
+/** Operating hours per day-of-week (0 = Sunday) */
+const OPEN_HOUR: Record<number, number> = {
+  0: 14, // Sunday  — 2 PM
+  1: 9,  2: 9, 3: 9, 4: 9, 5: 9, 6: 9, // Mon–Sat — 9 AM
+};
+const CLOSE_HOUR = 22; // 10 PM every day
+
+function fmt12(h: number, m: number) {
+  const period = h >= 12 ? "PM" : "AM";
+  const dh = h % 12 === 0 ? 12 : h % 12;
+  const dm = m === 0 ? "00" : "30";
+  return `${dh}:${dm} ${period}`;
+}
+
+function getDayLabel(d: Date, today: Date) {
+  const isToday =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  if (isToday) return "Today";
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return days[d.getDay()];
+}
+
+interface TimeSlot {
+  label: string;
+  value: string; // ISO string of the slot datetime
+}
+
+function generateSlots(): TimeSlot[] {
+  const now = new Date();
+  // Earliest selectable slot = now + 60 min (buffer for prep + delivery)
+  const earliest = new Date(now.getTime() + 60 * 60 * 1000);
+  const slots: TimeSlot[] = [];
+
+  // Scan today + next 2 days so late-night orderers always see options
+  for (let dayOffset = 0; dayOffset <= 2 && slots.length < 20; dayOffset++) {
+    const day = new Date(now);
+    day.setDate(now.getDate() + dayOffset);
+    const dow = day.getDay();
+    const openH = OPEN_HOUR[dow] ?? 9;
+
+    for (let h = openH; h < CLOSE_HOUR; h++) {
+      for (const m of [0, 30]) {
+        const slotTime = new Date(day);
+        slotTime.setHours(h, m, 0, 0);
+        if (slotTime < earliest) continue;
+
+        slots.push({
+          label: `${getDayLabel(day, now)}, ${fmt12(h, m)}`,
+          value: slotTime.toISOString(),
+        });
+        if (slots.length >= 20) break;
+      }
+      if (slots.length >= 20) break;
+    }
+  }
+
+  return slots;
+}
+
+/* ─────────────────────────────────────────────
+   Operating-hours status banner
+───────────────────────────────────────────── */
+function getHoursStatus(): { open: boolean; message: string } {
+  const now = new Date();
+  const dow = now.getDay();
+  const openH = OPEN_HOUR[dow] ?? 9;
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const nowMins = h * 60 + m;
+  const openMins = openH * 60;
+  const closeMins = CLOSE_HOUR * 60;
+
+  if (nowMins >= openMins && nowMins < closeMins) {
+    const closingIn = closeMins - nowMins;
+    if (closingIn <= 60) {
+      return { open: true, message: `Closing soon — closes at 10:00 PM` };
+    }
+    return { open: true, message: `Open now — closes at 10:00 PM` };
+  }
+
+  // Before open
+  if (nowMins < openMins) {
+    return {
+      open: false,
+      message: `We open at ${fmt12(openH, 0)} today — order now and choose a time slot!`,
+    };
+  }
+  // After close
+  const tomorrowDow = (dow + 1) % 7;
+  const tomorrowOpenH = OPEN_HOUR[tomorrowDow] ?? 9;
+  return {
+    open: false,
+    message: `Closed for today — opens tomorrow at ${fmt12(tomorrowOpenH, 0)}. You can still order!`,
+  };
+}
+
+/* ─────────────────────────────────────────────
+   Types
+───────────────────────────────────────────── */
 type CheckoutForm = {
   name: string;
   phone: string;
   address: string;
   deliveryZoneIndex: number;
   instructions: string;
+  deliveryTime: string; // ISO string of chosen slot
 };
 
+/* ─────────────────────────────────────────────
+   Component
+───────────────────────────────────────────── */
 export default function CartPanel() {
   const {
     items,
@@ -23,8 +132,10 @@ export default function CartPanel() {
     deliveryFee,
     setDeliveryFee,
     total,
-    clearCart,
   } = useCart();
+
+  const slots = useMemo(() => generateSlots(), []);
+  const hoursStatus = useMemo(() => getHoursStatus(), []);
 
   const [step, setStep] = useState<"cart" | "checkout">("cart");
   const [form, setForm] = useState<CheckoutForm>({
@@ -33,9 +144,11 @@ export default function CartPanel() {
     address: "",
     deliveryZoneIndex: 0,
     instructions: "",
+    deliveryTime: slots[0]?.value ?? "",
   });
 
   const selectedZone = DELIVERY_ZONES[form.deliveryZoneIndex];
+  const selectedSlot = slots.find((s) => s.value === form.deliveryTime) ?? slots[0];
 
   const handleZoneChange = (idx: number) => {
     setForm((f) => ({ ...f, deliveryZoneIndex: idx }));
@@ -51,11 +164,10 @@ export default function CartPanel() {
     const lines = items.map((item) => {
       let line = `• ${item.name}`;
       if (item.size) line += ` (${item.size})`;
-      if (item.extras && item.extras.length > 0) {
-        const extrasStr = item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ");
-        line += ` + ${extrasStr}`;
+      if (item.extras?.length) {
+        line += ` + ${item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}`;
       }
-      if (item.removedIngredients && item.removedIngredients.length > 0) {
+      if (item.removedIngredients?.length) {
         line += ` [NO ${item.removedIngredients.join(", NO ")}]`;
       }
       line += ` ×${item.quantity} = ${formatPrice(item.price * item.quantity)}`;
@@ -69,6 +181,7 @@ export default function CartPanel() {
       `Subtotal: ${formatPrice(subtotal)}\n` +
       `Delivery (${selectedZone.label}): ${formatPrice(deliveryFee)}\n` +
       `Total: ${formatPrice(total)}\n\n` +
+      `🕐 Preferred Delivery Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
       `📍 Delivery Details:\n` +
       `Name: ${form.name}\n` +
       `Phone: ${form.phone}\n` +
@@ -80,6 +193,10 @@ export default function CartPanel() {
   };
 
   const canCheckout = form.name.trim() && form.phone.trim() && form.address.trim();
+
+  /* ─── Shared field style ─── */
+  const fieldClass =
+    "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
     <Sheet open={isCartOpen} onOpenChange={handleClose}>
@@ -110,6 +227,18 @@ export default function CartPanel() {
           )}
         </div>
 
+        {/* Hours status banner */}
+        <div
+          className={`px-4 py-2 flex items-center gap-2 text-xs font-[Montserrat] border-b ${
+            hoursStatus.open
+              ? "bg-green-50 border-green-100 text-green-800"
+              : "bg-amber-50 border-amber-100 text-amber-800"
+          }`}
+        >
+          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>{hoursStatus.message}</span>
+        </div>
+
         {/* Empty State */}
         {items.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center" data-testid="cart-empty">
@@ -124,6 +253,7 @@ export default function CartPanel() {
               Browse Menu
             </button>
           </div>
+
         ) : step === "cart" ? (
           <>
             {/* Cart Items */}
@@ -144,15 +274,13 @@ export default function CartPanel() {
                     )}
                     <div className="flex-1 min-w-0">
                       <h4 className="font-chewy text-base text-gray-900 leading-tight">{item.name}</h4>
-                      {item.size && (
-                        <p className="text-xs text-gray-500 font-[Montserrat]">{item.size}</p>
-                      )}
-                      {item.extras && item.extras.length > 0 && (
+                      {item.size && <p className="text-xs text-gray-500 font-[Montserrat]">{item.size}</p>}
+                      {item.extras?.length > 0 && (
                         <p className="text-xs text-green-700 font-[Montserrat]">
                           + {item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}
                         </p>
                       )}
-                      {item.removedIngredients && item.removedIngredients.length > 0 && (
+                      {item.removedIngredients?.length > 0 && (
                         <p className="text-xs text-orange-600 font-[Montserrat]">
                           No: {item.removedIngredients.join(", ")}
                         </p>
@@ -180,9 +308,7 @@ export default function CartPanel() {
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="font-bold text-sm w-5 text-center font-[Montserrat]">
-                        {item.quantity}
-                      </span>
+                      <span className="font-bold text-sm w-5 text-center font-[Montserrat]">{item.quantity}</span>
                       <button
                         data-testid={`button-cart-plus-${item.id}`}
                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
@@ -204,9 +330,7 @@ export default function CartPanel() {
               <div className="space-y-2 mb-4">
                 <div className="flex justify-between text-sm font-[Montserrat]">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold" data-testid="text-subtotal">
-                    {formatPrice(subtotal)}
-                  </span>
+                  <span className="font-semibold" data-testid="text-subtotal">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-[Montserrat]">
                   <span className="text-gray-600">Delivery (est.)</span>
@@ -222,10 +346,12 @@ export default function CartPanel() {
               </button>
             </div>
           </>
+
         ) : (
           <>
             {/* Checkout Form */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
               {/* Order Summary */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <h3 className="font-chewy text-lg text-gray-800 mb-3">Order Summary</h3>
@@ -242,13 +368,56 @@ export default function CartPanel() {
                     </div>
                   ))}
                 </div>
+                {selectedSlot && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 text-sm font-[Montserrat]">
+                    <Clock className="w-4 h-4 text-[#E8192C] flex-shrink-0" />
+                    <span className="text-gray-500">Delivery time:</span>
+                    <span className="font-semibold text-gray-800">{selectedSlot.label}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Delivery Zone + Calculator */}
+              {/* ── DELIVERY TIME SLOT ── */}
               <div>
-                <label className="font-chewy text-lg text-gray-800 mb-2 block">
-                  Delivery Area
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                  Preferred Delivery Time
                 </label>
+
+                {slots.length === 0 ? (
+                  <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
+                    No slots available right now. Please check back during operating hours.
+                  </p>
+                ) : (
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <select
+                      data-testid="select-delivery-time"
+                      value={form.deliveryTime}
+                      onChange={(e) => setForm((f) => ({ ...f, deliveryTime: e.target.value }))}
+                      className={`${fieldClass} pl-9 pr-10 appearance-none`}
+                    >
+                      {slots.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
+
+                {/* Prep-time note */}
+                <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-blue-700 font-[Montserrat] leading-relaxed">
+                    Orders are typically prepared within 30 minutes. The additional time covers delivery and any unexpected delays.
+                  </p>
+                </div>
+              </div>
+
+              {/* Delivery Zone */}
+              <div>
+                <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
                 <p className="text-xs text-gray-400 font-[Montserrat] mb-2">
                   Select your zone for an instant delivery cost estimate
                 </p>
@@ -257,7 +426,7 @@ export default function CartPanel() {
                     data-testid="select-delivery-zone"
                     value={form.deliveryZoneIndex}
                     onChange={(e) => handleZoneChange(Number(e.target.value))}
-                    className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] text-gray-700 focus:outline-none appearance-none bg-white pr-10"
+                    className={`${fieldClass} pr-10 appearance-none`}
                   >
                     {DELIVERY_ZONES.map((zone, idx) => (
                       <option key={idx} value={idx}>
@@ -282,7 +451,7 @@ export default function CartPanel() {
                   placeholder="Enter your full name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none"
+                  className={fieldClass}
                 />
               </div>
 
@@ -295,7 +464,7 @@ export default function CartPanel() {
                   placeholder="+234 800 000 0000"
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none"
+                  className={fieldClass}
                 />
               </div>
 
@@ -307,7 +476,7 @@ export default function CartPanel() {
                   placeholder="Enter your full delivery address..."
                   value={form.address}
                   onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none resize-none"
+                  className={`${fieldClass} resize-none`}
                   rows={3}
                 />
               </div>
@@ -315,14 +484,15 @@ export default function CartPanel() {
               {/* Special Instructions */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Special Instructions <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  Special Instructions{" "}
+                  <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
                 </label>
                 <textarea
                   data-testid="input-checkout-instructions"
                   placeholder="Any other notes for your order..."
                   value={form.instructions}
                   onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
-                  className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none resize-none"
+                  className={`${fieldClass} resize-none`}
                   rows={2}
                 />
               </div>
@@ -339,6 +509,12 @@ export default function CartPanel() {
                   <span className="text-gray-600">Delivery</span>
                   <span className="font-semibold">{formatPrice(deliveryFee)}</span>
                 </div>
+                {selectedSlot && (
+                  <div className="flex justify-between text-sm font-[Montserrat]">
+                    <span className="text-gray-600">Delivery time</span>
+                    <span className="font-semibold text-gray-700">{selectedSlot.label}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
                   <span className="font-chewy text-lg">Total</span>
                   <span className="font-chewy text-lg text-[#E8192C]" data-testid="text-total">
