@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
@@ -203,7 +204,7 @@ export default function CartPanel() {
     if (!code) return;
     setValidatingCode(true);
     setReferralValid(null);
-    const res = await fetch("/api/referrals/validate", {
+    const res = await fetch(apiUrl("/api/referrals/validate"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, userId: user?.id, phone: form.phone }),
@@ -252,7 +253,7 @@ export default function CartPanel() {
     if (!canCheckout) return;
     setSavingOrder(true);
     try {
-      await fetch("/api/orders", {
+      await fetch(apiUrl("/api/orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

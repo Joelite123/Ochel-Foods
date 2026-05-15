@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, RefreshCw, Eye, X } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
@@ -61,7 +62,7 @@ export default function AdminOrders() {
     if (status === "delivered") {
       const order = orders.find((o) => o.id === orderId);
       if (order?.referral_code_used) {
-        fetch("/api/referrals/reward", {
+        fetch(apiUrl("/api/referrals/reward"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId }),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Mail, Download, Trash2, Send, Users } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 import { supabase, DBNewsletterSubscriber } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -39,7 +40,7 @@ export default function AdminNewsletter() {
     setSending(true);
 
     // Send via API
-    const res = await fetch("/api/newsletter/send", {
+    const res = await fetch(apiUrl("/api/newsletter/send"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ subject, body, recipients: active.map((s) => ({ email: s.email, name: s.name })) }),

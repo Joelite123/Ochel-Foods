@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { apiUrl } from "@/lib/api";
 import { categories, featuredByCategory, allProducts } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
 import PromoBanner from "@/components/ui/PromoBanner";
@@ -353,7 +354,7 @@ function NewsletterSection() {
     if (!email.includes("@")) return toast.error("Enter a valid email");
     setSubmitting(true);
     try {
-      const res = await fetch("/api/subscribe", {
+      const res = await fetch(apiUrl("/api/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, name }),
