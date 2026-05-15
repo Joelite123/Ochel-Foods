@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
+import { toast } from "sonner";
 import { categories, featuredByCategory, allProducts } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
+import PromoBanner from "@/components/ui/PromoBanner";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 import pizzaImg from "@/assets/pizza.png";
 import burgerImg from "@/assets/burger.png";
@@ -95,6 +97,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen">
+
+      {/* ── PROMO BANNERS ──────────────────────────────────────── */}
+      <PromoBanner />
 
       {/* ── STICKY CATEGORY NAV ─────────────────────────────────── */}
       <div className="sticky top-[62px] z-40 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
@@ -330,6 +335,83 @@ export default function HomePage() {
           )}
         </div>
       </section>
+
+      {/* ── NEWSLETTER SUBSCRIBE ──────────────────────────────── */}
+      <NewsletterSection />
     </div>
+  );
+}
+
+function NewsletterSection() {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.includes("@")) return toast.error("Enter a valid email");
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name }),
+      });
+      if (res.ok) {
+        setDone(true);
+        toast.success("You're subscribed! 🎉");
+      } else {
+        throw new Error();
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <section className="bg-[#1a1a1a] py-12 px-4">
+      <div className="max-w-xl mx-auto text-center">
+        <div className="flex justify-center mb-3">
+          <div className="w-12 h-12 bg-[#E8192C]/20 rounded-full flex items-center justify-center">
+            <Mail className="w-6 h-6 text-[#E8192C]" />
+          </div>
+        </div>
+        <h2 className="font-chewy text-3xl text-white mb-2">Stay in the loop</h2>
+        <p className="text-white/60 font-[Montserrat] text-sm mb-6">
+          Get exclusive deals, new menu launches, and promo codes straight to your inbox.
+        </p>
+        {done ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-green-500/20 border border-green-500/30 text-green-400 rounded-2xl px-6 py-4 font-[Montserrat] font-semibold"
+          >
+            ✅ You're on the list! Watch out for goodies.
+          </motion.div>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="text" placeholder="Your name (optional)" value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="flex-1 bg-white/10 border border-white/20 focus:border-[#E8192C] text-white placeholder-white/40 rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none"
+            />
+            <input
+              type="email" placeholder="Email address" value={email} required
+              onChange={(e) => setEmail(e.target.value)}
+              className="flex-1 bg-white/10 border border-white/20 focus:border-[#E8192C] text-white placeholder-white/40 rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none"
+            />
+            <button
+              type="submit" disabled={submitting}
+              className="bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold px-6 py-3 rounded-xl font-[Montserrat] transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {submitting ? "…" : "Subscribe"}
+            </button>
+          </form>
+        )}
+        <p className="text-white/30 text-xs font-[Montserrat] mt-3">No spam. Unsubscribe any time.</p>
+      </div>
+    </section>
   );
 }

@@ -1,19 +1,21 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
-import { Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown, Clock, Info } from "lucide-react";
+import {
+  Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
+  Clock, Info, Wallet, Tag, Check, X,
+} from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRewards } from "@/contexts/RewardContext";
 import { DELIVERY_ZONES, formatPrice } from "@/data/menuData";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
-/* ─────────────────────────────────────────────
-   Delivery time-slot helpers
-───────────────────────────────────────────── */
-
-/** Operating hours per day-of-week (0 = Sunday) */
-const OPEN_HOUR: Record<number, number> = {
-  0: 14, // Sunday  — 2 PM
-  1: 9,  2: 9, 3: 9, 4: 9, 5: 9, 6: 9, // Mon–Sat — 9 AM
+/* ─── Delivery time helpers (now also reads from Supabase when available) ─── */
+const OPEN_HOUR_FALLBACK: Record<number, number> = {
+  0: 14, 1: 9, 2: 9, 3: 9, 4: 9, 5: 9, 6: 9,
 };
-const CLOSE_HOUR = 22; // 10 PM every day
+const CLOSE_HOUR_FALLBACK = 22;
 
 function fmt12(h: number, m: number) {
   const period = h >= 12 ? "PM" : "AM";
@@ -23,39 +25,32 @@ function fmt12(h: number, m: number) {
 }
 
 function getDayLabel(d: Date, today: Date) {
-  const isToday =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
+  const isToday = d.toDateString() === today.toDateString();
   if (isToday) return "Today";
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return days[d.getDay()];
 }
 
-interface TimeSlot {
-  label: string;
-  value: string; // ISO string of the slot datetime
-}
+interface TimeSlot { label: string; value: string }
 
-function generateSlots(): TimeSlot[] {
+function generateSlots(
+  openHours: Record<number, number>,
+  closeHour: number
+): TimeSlot[] {
   const now = new Date();
-  // Earliest selectable slot = now + 60 min (buffer for prep + delivery)
   const earliest = new Date(now.getTime() + 60 * 60 * 1000);
   const slots: TimeSlot[] = [];
 
-  // Scan today + next 2 days so late-night orderers always see options
   for (let dayOffset = 0; dayOffset <= 2 && slots.length < 20; dayOffset++) {
     const day = new Date(now);
     day.setDate(now.getDate() + dayOffset);
-    const dow = day.getDay();
-    const openH = OPEN_HOUR[dow] ?? 9;
+    const openH = openHours[day.getDay()] ?? 9;
 
-    for (let h = openH; h < CLOSE_HOUR; h++) {
+    for (let h = openH; h < closeHour; h++) {
       for (const m of [0, 30]) {
         const slotTime = new Date(day);
         slotTime.setHours(h, m, 0, 0);
         if (slotTime < earliest) continue;
-
         slots.push({
           label: `${getDayLabel(day, now)}, ${fmt12(h, m)}`,
           value: slotTime.toISOString(),
@@ -65,161 +60,259 @@ function generateSlots(): TimeSlot[] {
       if (slots.length >= 20) break;
     }
   }
-
   return slots;
 }
 
-/* ─────────────────────────────────────────────
-   Operating-hours status banner
-───────────────────────────────────────────── */
-function getHoursStatus(): { open: boolean; message: string } {
+function getHoursStatus(openHours: Record<number, number>, closeHour: number) {
   const now = new Date();
   const dow = now.getDay();
-  const openH = OPEN_HOUR[dow] ?? 9;
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const nowMins = h * 60 + m;
+  const openH = openHours[dow] ?? 9;
+  const nowMins = now.getHours() * 60 + now.getMinutes();
   const openMins = openH * 60;
-  const closeMins = CLOSE_HOUR * 60;
+  const closeMins = closeHour * 60;
 
   if (nowMins >= openMins && nowMins < closeMins) {
     const closingIn = closeMins - nowMins;
-    if (closingIn <= 60) {
-      return { open: true, message: `Closing soon — closes at 10:00 PM` };
-    }
-    return { open: true, message: `Open now — closes at 10:00 PM` };
+    return {
+      open: true,
+      message: closingIn <= 60
+        ? `Closing soon — closes at ${fmt12(closeHour, 0)}`
+        : `Open now — closes at ${fmt12(closeHour, 0)}`,
+    };
   }
-
-  // Before open
   if (nowMins < openMins) {
     return {
       open: false,
       message: `We open at ${fmt12(openH, 0)} today — order now and choose a time slot!`,
     };
   }
-  // After close
-  const tomorrowDow = (dow + 1) % 7;
-  const tomorrowOpenH = OPEN_HOUR[tomorrowDow] ?? 9;
+  const tomorrowOpenH = openHours[(dow + 1) % 7] ?? 9;
   return {
     open: false,
     message: `Closed for today — opens tomorrow at ${fmt12(tomorrowOpenH, 0)}. You can still order!`,
   };
 }
 
-/* ─────────────────────────────────────────────
-   Types
-───────────────────────────────────────────── */
+/* ─── Delivery zones from DB ─── */
+type DeliveryZoneDB = { id: string; label: string; price: number; description?: string };
+
 type CheckoutForm = {
   name: string;
   phone: string;
   address: string;
-  deliveryZoneIndex: number;
+  email: string;
+  deliveryZoneId: string;
   instructions: string;
-  deliveryTime: string; // ISO string of chosen slot
+  deliveryTime: string;
+  referralCode: string;
 };
 
-/* ─────────────────────────────────────────────
-   Component
-───────────────────────────────────────────── */
 export default function CartPanel() {
-  const {
-    items,
-    isCartOpen,
-    setIsCartOpen,
-    removeItem,
-    updateQuantity,
-    subtotal,
-    deliveryFee,
-    setDeliveryFee,
-    total,
-  } = useCart();
+  const { items, isCartOpen, setIsCartOpen, removeItem, updateQuantity, subtotal, total, setDeliveryFee, deliveryFee, clearCart } = useCart();
+  const { user, profile } = useAuth();
+  const { walletBalance, walletApplied, setWalletApplied, refresh: refreshRewards } = useRewards();
 
-  const slots = useMemo(() => generateSlots(), []);
-  const hoursStatus = useMemo(() => getHoursStatus(), []);
+  // Load dynamic data from Supabase
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneDB[]>([]);
+  const [openHours, setOpenHours] = useState<Record<number, number>>(OPEN_HOUR_FALLBACK);
+  const [closeHour, setCloseHour] = useState(CLOSE_HOUR_FALLBACK);
+  const [referralValid, setReferralValid] = useState<null | boolean>(null);
+  const [referralMsg, setReferralMsg] = useState("");
+  const [validatingCode, setValidatingCode] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  useEffect(() => {
+    // Load delivery zones
+    supabase.from("delivery_zones").select("*").eq("is_active", true).order("sort_order").then(({ data }) => {
+      if (data?.length) {
+        setDeliveryZones(data as DeliveryZoneDB[]);
+        setDeliveryFee(data[0].price);
+      }
+    });
+    // Load operating hours
+    supabase.from("operating_hours").select("*").order("day_of_week").then(({ data }) => {
+      if (data?.length) {
+        const map: Record<number, number> = {};
+        let maxClose = CLOSE_HOUR_FALLBACK;
+        (data as any[]).forEach((h) => {
+          if (!h.is_closed) map[h.day_of_week] = h.open_hour;
+          if (h.close_hour > maxClose) maxClose = h.close_hour;
+        });
+        if (Object.keys(map).length) setOpenHours(map);
+        setCloseHour(maxClose);
+      }
+    });
+  }, []);
+
+  const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
+  const hoursStatus = useMemo(() => getHoursStatus(openHours, closeHour), [openHours, closeHour]);
 
   const [step, setStep] = useState<"cart" | "checkout">("cart");
   const [form, setForm] = useState<CheckoutForm>({
-    name: "",
-    phone: "",
-    address: "",
-    deliveryZoneIndex: 0,
-    instructions: "",
-    deliveryTime: slots[0]?.value ?? "",
+    name: profile?.full_name || "",
+    phone: profile?.phone || "",
+    address: "", email: profile?.email || "",
+    deliveryZoneId: "",
+    instructions: "", deliveryTime: slots[0]?.value ?? "",
+    referralCode: "",
   });
 
-  const selectedZone = DELIVERY_ZONES[form.deliveryZoneIndex];
+  // Pre-fill user info when profile loads
+  useEffect(() => {
+    if (profile) {
+      setForm((f) => ({
+        ...f,
+        name: f.name || profile.full_name || "",
+        phone: f.phone || profile.phone || "",
+        email: f.email || profile.email || "",
+      }));
+    }
+  }, [profile]);
+
+  // Sync delivery zone to first zone
+  useEffect(() => {
+    if (deliveryZones.length && !form.deliveryZoneId) {
+      setForm((f) => ({ ...f, deliveryZoneId: deliveryZones[0].id }));
+    }
+  }, [deliveryZones]);
+
+  const selectedZone = deliveryZones.find((z) => z.id === form.deliveryZoneId) ?? deliveryZones[0];
   const selectedSlot = slots.find((s) => s.value === form.deliveryTime) ?? slots[0];
 
-  const handleZoneChange = (idx: number) => {
-    setForm((f) => ({ ...f, deliveryZoneIndex: idx }));
-    setDeliveryFee(DELIVERY_ZONES[idx].price);
+  const handleZoneChange = (id: string) => {
+    setForm((f) => ({ ...f, deliveryZoneId: id }));
+    const zone = deliveryZones.find((z) => z.id === id);
+    if (zone) setDeliveryFee(zone.price);
   };
 
-  const handleClose = () => {
-    setIsCartOpen(false);
-    setStep("cart");
+  const handleClose = () => { setIsCartOpen(false); setStep("cart"); };
+
+  /* ── Wallet toggle ── */
+  const handleApplyWallet = () => {
+    if (walletApplied > 0) {
+      setWalletApplied(0);
+    } else {
+      const maxApply = Math.min(walletBalance, total);
+      setWalletApplied(maxApply);
+    }
   };
 
+  /* ── Referral code validation ── */
+  const handleValidateReferral = async () => {
+    const code = form.referralCode.trim().toUpperCase();
+    if (!code) return;
+    setValidatingCode(true);
+    setReferralValid(null);
+    const res = await fetch("/api/referrals/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, userId: user?.id, phone: form.phone }),
+    });
+    const data = await res.json();
+    setReferralValid(data.valid);
+    setReferralMsg(data.valid ? `Valid! Referred by ${data.referrerName}` : data.error);
+    setValidatingCode(false);
+  };
+
+  /* ── Totals ── */
+  const finalTotal = Math.max(0, total - walletApplied);
+
+  /* ── Build WhatsApp message ── */
   const buildWhatsAppMessage = () => {
     const lines = items.map((item) => {
       let line = `• ${item.name}`;
       if (item.size) line += ` (${item.size})`;
-      if (item.extras?.length) {
-        line += ` + ${item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}`;
-      }
-      if (item.removedIngredients?.length) {
-        line += ` [NO ${item.removedIngredients.join(", NO ")}]`;
-      }
+      if (item.extras?.length) line += ` + ${item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}`;
+      if (item.removedIngredients?.length) line += ` [NO ${item.removedIngredients.join(", NO ")}]`;
       line += ` ×${item.quantity} = ${formatPrice(item.price * item.quantity)}`;
       if (item.note) line += `\n  Note: ${item.note}`;
       return line;
     });
 
-    const msg =
+    return encodeURIComponent(
       `Hello O'chel Foods! I'd like to place an order:\n\n` +
       `${lines.join("\n")}\n\n` +
       `Subtotal: ${formatPrice(subtotal)}\n` +
-      `Delivery (${selectedZone.label}): ${formatPrice(deliveryFee)}\n` +
-      `Total: ${formatPrice(total)}\n\n` +
+      `Delivery (${selectedZone?.label ?? "—"}): ${formatPrice(deliveryFee)}\n` +
+      (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
+      (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
+      `Total: ${formatPrice(finalTotal)}\n\n` +
       `🕐 Preferred Delivery Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
       `📍 Delivery Details:\n` +
       `Name: ${form.name}\n` +
       `Phone: ${form.phone}\n` +
       `Address: ${form.address}\n` +
       (form.instructions ? `Instructions: ${form.instructions}\n` : "") +
-      `\nPlease confirm my order. Thank you!`;
+      `\nPlease confirm my order. Thank you!`
+    );
+  };
 
-    return encodeURIComponent(msg);
+  /* ── Save order to DB + open WhatsApp ── */
+  const handlePlaceOrder = async () => {
+    if (!canCheckout) return;
+    setSavingOrder(true);
+    try {
+      await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user?.id ?? null,
+          customer_name: form.name,
+          customer_phone: form.phone,
+          customer_email: form.email || null,
+          delivery_address: form.address,
+          delivery_zone_id: form.deliveryZoneId || null,
+          delivery_fee: deliveryFee,
+          subtotal,
+          total: finalTotal,
+          discount_amount: walletApplied,
+          referral_wallet_used: walletApplied,
+          delivery_time: selectedSlot?.label ?? null,
+          special_instructions: form.instructions || null,
+          referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
+          items: items.map((i) => ({
+            productId: i.productId,
+            name: i.name,
+            size: i.size,
+            price: i.price,
+            quantity: i.quantity,
+            extras: i.extras,
+            removedIngredients: i.removedIngredients,
+            note: i.note,
+          })),
+        }),
+      });
+
+      if (walletApplied > 0) refreshRewards();
+    } catch {
+      // Non-blocking — still open WhatsApp even if DB save fails
+    }
+    setSavingOrder(false);
+
+    // Open WhatsApp
+    window.open(`https://wa.me/2349056351651?text=${buildWhatsAppMessage()}`, "_blank", "noopener,noreferrer");
+    clearCart();
+    setWalletApplied(0);
+    handleClose();
   };
 
   const canCheckout = form.name.trim() && form.phone.trim() && form.address.trim();
-
-  /* ─── Shared field style ─── */
-  const fieldClass =
-    "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
+  const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
     <Sheet open={isCartOpen} onOpenChange={handleClose}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-        <SheetTitle className="sr-only">
-          {step === "cart" ? "Your Cart" : "Checkout"}
-        </SheetTitle>
+        <SheetTitle className="sr-only">{step === "cart" ? "Your Cart" : "Checkout"}</SheetTitle>
 
         {/* Header */}
         <div className="bg-[#E8192C] text-white px-5 py-4 flex items-center gap-3 flex-shrink-0">
           {step === "checkout" && (
-            <button
-              onClick={() => setStep("cart")}
-              className="p-1 hover:bg-white/20 rounded-full transition-colors"
-              data-testid="button-back-to-cart"
-            >
+            <button onClick={() => setStep("cart")} className="p-1 hover:bg-white/20 rounded-full">
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
           <ShoppingBag className="w-6 h-6" />
-          <h2 className="font-chewy text-xl flex-1">
-            {step === "cart" ? "Your Order" : "Checkout"}
-          </h2>
+          <h2 className="font-chewy text-xl flex-1">{step === "cart" ? "Your Order" : "Checkout"}</h2>
           {step === "cart" && items.length > 0 && (
             <span className="bg-[#FFB800] text-black text-xs font-bold px-2 py-0.5 rounded-full font-[Montserrat]">
               {items.reduce((s, i) => s + i.quantity, 0)} items
@@ -227,50 +320,61 @@ export default function CartPanel() {
           )}
         </div>
 
-        {/* Hours status banner */}
-        <div
-          className={`px-4 py-2 flex items-center gap-2 text-xs font-[Montserrat] border-b ${
-            hoursStatus.open
-              ? "bg-green-50 border-green-100 text-green-800"
-              : "bg-amber-50 border-amber-100 text-amber-800"
-          }`}
-        >
+        {/* Hours status */}
+        <div className={`px-4 py-2 flex items-center gap-2 text-xs font-[Montserrat] border-b ${
+          hoursStatus.open ? "bg-green-50 border-green-100 text-green-800" : "bg-amber-50 border-amber-100 text-amber-800"
+        }`}>
           <Clock className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{hoursStatus.message}</span>
         </div>
 
-        {/* Empty State */}
+        {/* Wallet banner (only for logged-in users with balance) */}
+        {user && walletBalance > 0 && step === "checkout" && (
+          <div className="mx-4 mt-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="text-xs font-semibold font-[Montserrat] text-green-800">
+                  Referral Wallet: {formatPrice(walletBalance)}
+                </p>
+                <p className="text-xs text-green-600 font-[Montserrat]">
+                  {walletApplied > 0 ? `−${formatPrice(walletApplied)} applied` : "Use as discount?"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleApplyWallet}
+              className={`text-xs font-bold font-[Montserrat] px-3 py-1.5 rounded-lg transition-colors ${
+                walletApplied > 0
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-white border border-green-300 text-green-700 hover:bg-green-50"
+              }`}
+            >
+              {walletApplied > 0 ? "Applied ✓" : "Apply"}
+            </button>
+          </div>
+        )}
+
+        {/* Empty state */}
         {items.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center" data-testid="cart-empty">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
             <ShoppingBag className="w-16 h-16 text-gray-200 mb-4" />
             <h3 className="font-chewy text-2xl text-gray-400 mb-2">Your cart is empty</h3>
             <p className="text-gray-400 text-sm font-[Montserrat]">Add some delicious items to get started!</p>
-            <button
-              onClick={handleClose}
-              data-testid="button-continue-shopping"
-              className="mt-6 bg-[#E8192C] text-white px-6 py-3 rounded-xl font-bold font-[Montserrat] hover:bg-[#c8151f] transition-colors"
-            >
+            <button onClick={handleClose}
+              className="mt-6 bg-[#E8192C] text-white px-6 py-3 rounded-xl font-bold font-[Montserrat] hover:bg-[#c8151f]">
               Browse Menu
             </button>
           </div>
 
         ) : step === "cart" ? (
           <>
-            {/* Cart Items */}
             <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
               {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm"
-                  data-testid={`cart-item-${item.id}`}
-                >
+                <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
                   <div className="flex gap-3">
                     {item.imageUrl && (
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
-                      />
+                      <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
                       <h4 className="font-chewy text-base text-gray-900 leading-tight">{item.name}</h4>
@@ -281,67 +385,48 @@ export default function CartPanel() {
                         </p>
                       )}
                       {item.removedIngredients?.length > 0 && (
-                        <p className="text-xs text-orange-600 font-[Montserrat]">
-                          No: {item.removedIngredients.join(", ")}
-                        </p>
+                        <p className="text-xs text-orange-600 font-[Montserrat]">No: {item.removedIngredients.join(", ")}</p>
                       )}
-                      {item.note && (
-                        <p className="text-xs text-gray-400 font-[Montserrat] italic">"{item.note}"</p>
-                      )}
+                      {item.note && <p className="text-xs text-gray-400 font-[Montserrat] italic">"{item.note}"</p>}
                       <p className="font-chewy text-[#E8192C] mt-0.5">{formatPrice(item.price)}</p>
                     </div>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      data-testid={`button-remove-${item.id}`}
-                      className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0 h-fit"
-                    >
+                    <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-500 h-fit">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
                     <div className="flex items-center gap-2">
-                      <button
-                        data-testid={`button-cart-minus-${item.id}`}
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                      >
+                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
                         <Minus className="w-3 h-3" />
                       </button>
                       <span className="font-bold text-sm w-5 text-center font-[Montserrat]">{item.quantity}</span>
-                      <button
-                        data-testid={`button-cart-plus-${item.id}`}
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        className="w-7 h-7 rounded-full bg-[#E8192C] text-white flex items-center justify-center hover:bg-[#c8151f] transition-colors"
-                      >
+                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        className="w-7 h-7 rounded-full bg-[#E8192C] text-white flex items-center justify-center hover:bg-[#c8151f]">
                         <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                    <span className="font-chewy text-gray-800 text-base">
-                      {formatPrice(item.price * item.quantity)}
-                    </span>
+                    <span className="font-chewy text-gray-800 text-base">{formatPrice(item.price * item.quantity)}</span>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Cart Footer */}
             <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
               <div className="space-y-2 mb-4">
                 <div className="flex justify-between text-sm font-[Montserrat]">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold" data-testid="text-subtotal">{formatPrice(subtotal)}</span>
+                  <span className="font-semibold">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-[Montserrat]">
                   <span className="text-gray-600">Delivery (est.)</span>
-                  <span className="font-semibold text-[#E8192C]">from {formatPrice(DELIVERY_ZONES[0].price)}</span>
+                  <span className="font-semibold text-[#E8192C]">
+                    {deliveryZones.length ? `from ${formatPrice(deliveryZones[0].price)}` : "—"}
+                  </span>
                 </div>
               </div>
-              <button
-                onClick={() => setStep("checkout")}
-                data-testid="button-proceed-checkout"
-                className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white text-center font-bold py-3 px-6 rounded-xl transition-colors font-[Montserrat]"
-              >
+              <button onClick={() => setStep("checkout")}
+                className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold py-3 px-6 rounded-xl font-[Montserrat]">
                 Proceed to Checkout
               </button>
             </div>
@@ -349,10 +434,8 @@ export default function CartPanel() {
 
         ) : (
           <>
-            {/* Checkout Form */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-
-              {/* Order Summary */}
+              {/* Order summary */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <h3 className="font-chewy text-lg text-gray-800 mb-3">Order Summary</h3>
                 <div className="space-y-1.5">
@@ -362,9 +445,7 @@ export default function CartPanel() {
                         {item.name} ×{item.quantity}
                         {item.size && <span className="text-gray-400"> ({item.size})</span>}
                       </span>
-                      <span className="font-semibold flex-shrink-0">
-                        {formatPrice(item.price * item.quantity)}
-                      </span>
+                      <span className="font-semibold flex-shrink-0">{formatPrice(item.price * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
@@ -377,65 +458,59 @@ export default function CartPanel() {
                 )}
               </div>
 
-              {/* ── DELIVERY TIME SLOT ── */}
+              {/* Delivery time */}
               <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Preferred Delivery Time
-                </label>
-
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">Preferred Delivery Time</label>
                 {slots.length === 0 ? (
                   <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
-                    No slots available right now. Please check back during operating hours.
+                    No slots available right now. Check back during operating hours.
                   </p>
                 ) : (
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <select
-                      data-testid="select-delivery-time"
-                      value={form.deliveryTime}
-                      onChange={(e) => setForm((f) => ({ ...f, deliveryTime: e.target.value }))}
-                      className={`${fieldClass} pl-9 pr-10 appearance-none`}
-                    >
-                      {slots.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
+                    <select value={form.deliveryTime} onChange={(e) => setForm((f) => ({ ...f, deliveryTime: e.target.value }))}
+                      className={`${fieldClass} pl-9 pr-10 appearance-none`}>
+                      {slots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
                 )}
-
-                {/* Prep-time note */}
                 <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
                   <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-700 font-[Montserrat] leading-relaxed">
-                    Orders are typically prepared within 30 minutes. The additional time covers delivery and any unexpected delays.
+                  <p className="text-xs text-blue-700 font-[Montserrat]">
+                    Orders are typically prepared within 30 minutes. Time shown includes prep and delivery.
                   </p>
                 </div>
               </div>
 
-              {/* Delivery Zone */}
+              {/* Delivery zone */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
-                <p className="text-xs text-gray-400 font-[Montserrat] mb-2">
-                  Select your zone for an instant delivery cost estimate
-                </p>
-                <div className="relative">
-                  <select
-                    data-testid="select-delivery-zone"
-                    value={form.deliveryZoneIndex}
-                    onChange={(e) => handleZoneChange(Number(e.target.value))}
-                    className={`${fieldClass} pr-10 appearance-none`}
-                  >
-                    {DELIVERY_ZONES.map((zone, idx) => (
-                      <option key={idx} value={idx}>
-                        {zone.label} — {formatPrice(zone.price)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                </div>
+                <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
+                {deliveryZones.length > 0 ? (
+                  <div className="relative">
+                    <select value={form.deliveryZoneId} onChange={(e) => handleZoneChange(e.target.value)}
+                      className={`${fieldClass} pr-10 appearance-none`}>
+                      {deliveryZones.map((z) => (
+                        <option key={z.id} value={z.id}>{z.label} — {formatPrice(z.price)}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                ) : (
+                  /* Fallback to hardcoded zones */
+                  <div className="relative">
+                    <select value={form.deliveryZoneId} onChange={(e) => {
+                      const idx = Number(e.target.value);
+                      setForm((f) => ({ ...f, deliveryZoneId: String(idx) }));
+                      setDeliveryFee(DELIVERY_ZONES[idx]?.price ?? 500);
+                    }}
+                      className={`${fieldClass} pr-10 appearance-none`}>
+                      {DELIVERY_ZONES.map((z, i) => <option key={i} value={i}>{z.label} — {formatPrice(z.price)}</option>)}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                )}
                 <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
                   <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
                   <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
@@ -445,70 +520,95 @@ export default function CartPanel() {
               {/* Full Name */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-1 block">Full Name *</label>
-                <input
-                  type="text"
-                  data-testid="input-checkout-name"
-                  placeholder="Enter your full name"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  className={fieldClass}
-                />
+                <input type="text" placeholder="Enter your full name" value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className={fieldClass} />
               </div>
 
               {/* Phone */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-1 block">Phone Number *</label>
-                <input
-                  type="tel"
-                  data-testid="input-checkout-phone"
-                  placeholder="+234 800 000 0000"
-                  value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  className={fieldClass}
-                />
+                <input type="tel" placeholder="+234 800 000 0000" value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={fieldClass} />
+              </div>
+
+              {/* Email (optional) */}
+              <div>
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                  Email <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                </label>
+                <input type="email" placeholder="your@email.com" value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={fieldClass} />
               </div>
 
               {/* Address */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-1 block">Delivery Address *</label>
-                <textarea
-                  data-testid="input-checkout-address"
-                  placeholder="Enter your full delivery address..."
-                  value={form.address}
+                <textarea placeholder="Enter your full delivery address..." value={form.address}
                   onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  className={`${fieldClass} resize-none`}
-                  rows={3}
-                />
+                  className={`${fieldClass} resize-none`} rows={3} />
               </div>
 
-              {/* Special Instructions */}
+              {/* Special instructions */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Special Instructions{" "}
-                  <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  Special Instructions <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
                 </label>
-                <textarea
-                  data-testid="input-checkout-instructions"
-                  placeholder="Any other notes for your order..."
-                  value={form.instructions}
+                <textarea placeholder="Any other notes..." value={form.instructions}
                   onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
-                  className={`${fieldClass} resize-none`}
-                  rows={2}
-                />
+                  className={`${fieldClass} resize-none`} rows={2} />
+              </div>
+
+              {/* Referral code */}
+              <div>
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                  Referral Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Enter a referral code"
+                      value={form.referralCode}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, referralCode: e.target.value.toUpperCase() }));
+                        setReferralValid(null);
+                      }}
+                      className={`${fieldClass} pl-10 uppercase`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleValidateReferral}
+                    disabled={!form.referralCode.trim() || validatingCode}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40"
+                  >
+                    {validatingCode ? "…" : "Apply"}
+                  </button>
+                </div>
+                {referralMsg && (
+                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${referralValid ? "text-green-600" : "text-red-500"}`}>
+                    {referralValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                    {referralMsg}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Checkout Footer */}
+            {/* Checkout footer */}
             <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
               <div className="space-y-2 mb-4">
                 <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(subtotal)}</span>
+                  <span className="text-gray-600">Subtotal</span><span className="font-semibold">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Delivery</span>
-                  <span className="font-semibold">{formatPrice(deliveryFee)}</span>
+                  <span className="text-gray-600">Delivery</span><span className="font-semibold">{formatPrice(deliveryFee)}</span>
                 </div>
+                {walletApplied > 0 && (
+                  <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
+                    <span>Wallet discount</span><span className="font-semibold">−{formatPrice(walletApplied)}</span>
+                  </div>
+                )}
                 {selectedSlot && (
                   <div className="flex justify-between text-sm font-[Montserrat]">
                     <span className="text-gray-600">Delivery time</span>
@@ -517,9 +617,7 @@ export default function CartPanel() {
                 )}
                 <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
                   <span className="font-chewy text-lg">Total</span>
-                  <span className="font-chewy text-lg text-[#E8192C]" data-testid="text-total">
-                    {formatPrice(total)}
-                  </span>
+                  <span className="font-chewy text-lg text-[#E8192C]">{formatPrice(finalTotal)}</span>
                 </div>
               </div>
 
@@ -529,22 +627,20 @@ export default function CartPanel() {
                 </p>
               )}
 
-              <a
-                href={canCheckout ? `https://wa.me/2349056351651?text=${buildWhatsAppMessage()}` : undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="button-order-now"
-                onClick={canCheckout ? undefined : (e) => e.preventDefault()}
-                className={`block w-full text-center font-bold py-3 px-6 rounded-xl transition-colors font-[Montserrat] ${
-                  canCheckout
+              <button
+                onClick={handlePlaceOrder}
+                disabled={!canCheckout || savingOrder}
+                className={`block w-full text-center font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
+                  canCheckout && !savingOrder
                     ? "bg-[#E8192C] hover:bg-[#c8151f] text-white"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
-                Order Now
-              </a>
-              <p className="text-center text-xs text-gray-400 font-[Montserrat] mt-2">
-                Payment validates order. Delivery charges may vary.
+                {savingOrder ? "Placing order…" : "Place Order via WhatsApp"}
+              </button>
+
+              <p className="text-xs text-gray-400 font-[Montserrat] text-center mt-2">
+                You'll be redirected to WhatsApp to confirm
               </p>
             </div>
           </>
