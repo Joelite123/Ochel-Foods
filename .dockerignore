@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+**/.git
+**/attached_assets
+artifacts/ochel-foods
+artifacts/mockup-sandbox
+.local
