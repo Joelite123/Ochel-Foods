@@ -1,4 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
+import { WebSocket as WsWebSocket } from "ws";
+
+if (typeof globalThis.WebSocket === "undefined") {
+  (globalThis as unknown as Record<string, unknown>).WebSocket = WsWebSocket;
+}
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
