@@ -7,6 +7,7 @@ import donutsImg from "@/assets/donuts.png";
 import bananaBreadImg from "@/assets/banana-bread.png";
 
 // Real food photos
+import pizzettaImg from "@/assets/pizzetta.jpg";
 import chickenSautePizzaImg from "@/assets/chicken-saute-pizza.jpg";
 import beefPizzaImg from "@/assets/beef-pizza.jpg";
 import suyaPizzaImg from "@/assets/suya-pizza.jpg";
@@ -141,6 +142,22 @@ export const pizzaProducts: Product[] = [
     extras: pizzaExtras,
     ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Chicken", "Beef", "BBQ Sauce", "Suya Spice", "Green Capsicum"],
     tag: "Best Value",
+  },
+  {
+    id: "pizza-5",
+    name: "Pizzetta",
+    description: "A personal-sized pizza — crispy thin base, rich tomato sauce, mozzarella, and your choice of toppings. Perfect for one.",
+    category: "pizza",
+    imageUrl: pizzettaImg,
+    basePrice: 5500,
+    sizes: [
+      { label: "Personal", description: "6 inches", price: 5500 },
+      { label: "Small", description: "8 inches", price: 7000 },
+    ],
+    crusts: pizzaCrusts,
+    extras: pizzaExtras,
+    ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Green Capsicum", "Sausage"],
+    tag: "New",
   },
 ];
 
