@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -121,6 +121,19 @@ export default function CartPanel() {
   const [referralMsg, setReferralMsg] = useState("");
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [zoneSearch, setZoneSearch] = useState("");
+  const [zoneOpen, setZoneOpen] = useState(false);
+  const zoneDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (zoneDropdownRef.current && !zoneDropdownRef.current.contains(e.target as Node)) {
+        setZoneOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     // Load delivery zones
@@ -177,13 +190,27 @@ export default function CartPanel() {
     }
   }, [deliveryZones]);
 
-  const selectedZone = deliveryZones.find((z) => z.id === form.deliveryZoneId) ?? deliveryZones[0];
+  // Unified zone list — Supabase when available, hardcoded fallback otherwise
+  const allZones = useMemo(() => {
+    if (deliveryZones.length > 0) return deliveryZones.map((z) => ({ id: z.id, label: z.label, price: z.price }));
+    return DELIVERY_ZONES.map((z, i) => ({ id: String(i), label: z.label, price: z.price }));
+  }, [deliveryZones]);
+
+  const selectedZone = allZones.find((z) => z.id === form.deliveryZoneId) ?? allZones[0];
   const selectedSlot = slots.find((s) => s.value === form.deliveryTime) ?? slots[0];
 
-  const handleZoneChange = (id: string) => {
+  const filteredZones = useMemo(() =>
+    zoneSearch.trim()
+      ? allZones.filter((z) => z.label.toLowerCase().includes(zoneSearch.toLowerCase()))
+      : allZones,
+    [allZones, zoneSearch]
+  );
+
+  const handleZoneChange = (id: string, price: number) => {
     setForm((f) => ({ ...f, deliveryZoneId: id }));
-    const zone = deliveryZones.find((z) => z.id === id);
-    if (zone) setDeliveryFee(zone.price);
+    setDeliveryFee(price);
+    setZoneSearch("");
+    setZoneOpen(false);
   };
 
   const handleClose = () => { setIsCartOpen(false); setStep("cart"); };
@@ -484,34 +511,59 @@ export default function CartPanel() {
                 </div>
               </div>
 
-              {/* Delivery zone */}
+              {/* Delivery zone — searchable dropdown */}
               <div>
                 <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
                 <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
-                {deliveryZones.length > 0 ? (
-                  <div className="relative">
-                    <select value={form.deliveryZoneId} onChange={(e) => handleZoneChange(e.target.value)}
-                      className={`${fieldClass} pr-10 appearance-none`}>
-                      {deliveryZones.map((z) => (
-                        <option key={z.id} value={z.id}>{z.label} — {formatPrice(z.price)}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
-                ) : (
-                  /* Fallback to hardcoded zones */
-                  <div className="relative">
-                    <select value={form.deliveryZoneId} onChange={(e) => {
-                      const idx = Number(e.target.value);
-                      setForm((f) => ({ ...f, deliveryZoneId: String(idx) }));
-                      setDeliveryFee(DELIVERY_ZONES[idx]?.price ?? 500);
-                    }}
-                      className={`${fieldClass} pr-10 appearance-none`}>
-                      {DELIVERY_ZONES.map((z, i) => <option key={i} value={i}>{z.label} — {formatPrice(z.price)}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
-                )}
+                <div className="relative" ref={zoneDropdownRef}>
+                  {/* Trigger button */}
+                  <button
+                    type="button"
+                    onClick={() => { setZoneOpen((o) => !o); setZoneSearch(""); }}
+                    className={`${fieldClass} pr-10 text-left flex items-center justify-between`}
+                  >
+                    <span className={selectedZone ? "text-gray-800" : "text-gray-400"}>
+                      {selectedZone ? `${selectedZone.label} — ${formatPrice(selectedZone.price)}` : "Select delivery area…"}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${zoneOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {/* Dropdown panel */}
+                  {zoneOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                      {/* Search input */}
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search location…"
+                          value={zoneSearch}
+                          onChange={(e) => setZoneSearch(e.target.value)}
+                          className="w-full px-3 py-2 text-sm font-[Montserrat] border border-gray-200 rounded-lg focus:outline-none focus:border-[#E8192C]"
+                        />
+                      </div>
+                      {/* Zone list */}
+                      <ul className="max-h-52 overflow-y-auto">
+                        {filteredZones.length === 0 ? (
+                          <li className="px-4 py-3 text-sm text-gray-400 font-[Montserrat]">No locations found</li>
+                        ) : (
+                          filteredZones.map((z) => (
+                            <li key={z.id}>
+                              <button
+                                type="button"
+                                onClick={() => handleZoneChange(z.id, z.price)}
+                                className={`w-full text-left px-4 py-2.5 text-sm font-[Montserrat] flex items-center justify-between hover:bg-red-50 transition-colors ${form.deliveryZoneId === z.id ? "bg-red-50 text-[#E8192C] font-semibold" : "text-gray-700"}`}
+                              >
+                                <span>{z.label}</span>
+                                <span className="font-chewy text-base ml-2 flex-shrink-0">{formatPrice(z.price)}</span>
+                              </button>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
                   <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
                   <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
