@@ -534,6 +534,62 @@ export const bakedGoodiesProducts: Product[] = [
   },
 ];
 
+// ── COMBO DEALS ─────────────────────────────────────────────────────────────
+
+export type ComboProduct = {
+  id: string;
+  name: string;
+  description: string;
+  imageUrl: string;
+  comboPrice: number;
+  originalPrice: number;
+  includes: string[];
+  tag?: string;
+};
+
+export const comboDealProducts: ComboProduct[] = [
+  {
+    id: "combo-1",
+    name: "Pizza Duo",
+    description: "Two Medium Pizzas — share the love. Pick any two of our signature pizzas and save big.",
+    imageUrl: chickenSautePizzaImg,
+    comboPrice: 14000,
+    originalPrice: 16000,
+    includes: ["2× Medium Pizza (any flavour)", "2× Ketchup sachets"],
+    tag: "Value Deal",
+  },
+  {
+    id: "combo-2",
+    name: "Burger & Chips Meal",
+    description: "A crispy burger paired with golden chicken & chips. The perfect feel-good combo.",
+    imageUrl: cheeseburgerImg,
+    comboPrice: 5500,
+    originalPrice: 6700,
+    includes: ["1× Crispy Chicken Burger", "1× Crispy Chicken & Chips"],
+    tag: "Popular",
+  },
+  {
+    id: "combo-3",
+    name: "Shawarma Box",
+    description: "Two loaded shawarmas plus a Small Chops Pack — great for sharing or a full-on solo feast.",
+    imageUrl: shawarmaRealImg,
+    comboPrice: 7500,
+    originalPrice: 9000,
+    includes: ["2× Chicken Shawarma", "1× Small Chops Pack S"],
+    tag: "Best Seller",
+  },
+  {
+    id: "combo-4",
+    name: "Family Pizza Party",
+    description: "One Large pizza plus two Small Chops packs. Feeds the whole table, guaranteed.",
+    imageUrl: suyaPizzaImg,
+    comboPrice: 11000,
+    originalPrice: 13500,
+    includes: ["1× Large Pizza (any flavour)", "2× Small Chops Pack S"],
+    tag: "Family Deal",
+  },
+];
+
 export const allProducts: Product[] = [
   ...pizzaProducts,
   ...burgerProducts,

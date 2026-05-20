@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { apiUrl } from "@/lib/api";
-import { categories, featuredByCategory, allProducts } from "@/data/menuData";
+import { categories, featuredByCategory, allProducts, comboDealProducts } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
+import ComboCard from "@/components/ui/ComboCard";
 import PromoBanner from "@/components/ui/PromoBanner";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 import pizzaImg from "@/assets/pizza.png";
@@ -29,8 +30,10 @@ const slides = [
 ];
 
 export default function HomePage() {
+  const COMBO_TAB_ID = "featured-combos";
+
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState(featuredByCategory[0].id);
+  const [activeTab, setActiveTab] = useState(COMBO_TAB_ID);
   const [slide, setSlide] = useState(0);
   const [direction, setDirection] = useState(1);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -70,12 +73,13 @@ export default function HomePage() {
 
   useEffect(() => {
     const handleScroll = () => {
-      let currentId = featuredByCategory[0].id;
-      for (const cat of featuredByCategory) {
-        const el = sectionRefs.current[cat.id];
+      let currentId = COMBO_TAB_ID;
+      const allTabs = [COMBO_TAB_ID, ...featuredByCategory.map((c) => c.id)];
+      for (const id of allTabs) {
+        const el = sectionRefs.current[id];
         if (el) {
           const top = el.getBoundingClientRect().top;
-          if (top <= 140) currentId = cat.id;
+          if (top <= 140) currentId = id;
         }
       }
       setActiveTab(currentId);
@@ -106,6 +110,18 @@ export default function HomePage() {
       <div className="sticky top-[62px] z-40 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1.5 overflow-x-auto py-2.5 scrollbar-hide">
+            {/* Combo Deals tab — first */}
+            <button
+              data-testid="featured-tab-combos"
+              onClick={() => scrollToSection(COMBO_TAB_ID)}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-semibold font-[Montserrat] transition-all whitespace-nowrap ${
+                activeTab === COMBO_TAB_ID
+                  ? "bg-[#E8192C] text-white shadow-md"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              🔥 Combo Deals
+            </button>
             {featuredByCategory.map((cat) => (
               <button
                 key={cat.id}
@@ -301,6 +317,44 @@ export default function HomePage() {
             )
           ) : (
             <div className="space-y-14">
+
+              {/* ── COMBO DEALS ──────────────────────────────────────── */}
+              <div
+                id={COMBO_TAB_ID}
+                ref={(el) => { sectionRefs.current[COMBO_TAB_ID] = el; }}
+              >
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="font-chewy text-3xl text-gray-900">🔥 Combo Deals</h3>
+                  <Link
+                    href="/combos"
+                    className="text-[#E8192C] font-semibold font-[Montserrat] text-sm hover:underline"
+                  >
+                    See all →
+                  </Link>
+                </div>
+                {/* Savings callout */}
+                <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
+                  <span className="text-2xl">💰</span>
+                  <p className="text-green-800 font-[Montserrat] text-sm font-semibold">
+                    Bundle & save — combo prices beat ordering items separately. Savings shown on each deal.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-4">
+                  {comboDealProducts.map((combo, idx) => (
+                    <motion.div
+                      key={combo.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: idx * 0.08 }}
+                    >
+                      <ComboCard combo={combo} />
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── REGULAR MENU CATEGORIES ──────────────────────────── */}
               {featuredByCategory.map((cat) => (
                 <div
                   key={cat.id}

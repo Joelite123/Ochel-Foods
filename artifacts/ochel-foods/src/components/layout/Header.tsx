@@ -7,6 +7,7 @@ import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
 const navLinks = [
   { label: "Home", href: "/" },
+  { label: "Combos", href: "/combos" },
   { label: "Pizza", href: "/pizza" },
   { label: "Burgers", href: "/burgers" },
   { label: "Shawarma", href: "/shawarma" },

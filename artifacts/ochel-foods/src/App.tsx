@@ -18,6 +18,7 @@ import ShawarmaPage from "@/pages/ShawarmaPage";
 import FingerFoodsPage from "@/pages/FingerFoodsPage";
 import PastriesPage from "@/pages/PastriesPage";
 import BakedGoodiesPage from "@/pages/BakedGoodiesPage";
+import CombosPage from "@/pages/CombosPage";
 import AboutPage from "@/pages/AboutPage";
 import LoginPage from "@/pages/LoginPage";
 import AccountPage from "@/pages/AccountPage";
@@ -174,6 +175,9 @@ function Router() {
       </Route>
       <Route path="/baked-goodies">
         {() => <PublicLayout><BakedGoodiesPage /></PublicLayout>}
+      </Route>
+      <Route path="/combos">
+        {() => <PublicLayout><CombosPage /></PublicLayout>}
       </Route>
       <Route path="/about">
         {() => <PublicLayout><AboutPage /></PublicLayout>}
