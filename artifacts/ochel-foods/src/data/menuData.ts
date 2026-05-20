@@ -6,6 +6,16 @@ import pastriesImg from "@/assets/pastries.png";
 import donutsImg from "@/assets/donuts.png";
 import bananaBreadImg from "@/assets/banana-bread.png";
 
+// Real food photos
+import chickenSautePizzaImg from "@/assets/chicken-saute-pizza.jpg";
+import beefPizzaImg from "@/assets/beef-pizza.jpg";
+import suyaPizzaImg from "@/assets/suya-pizza.jpg";
+import cheeseburgerImg from "@/assets/cheeseburger.jpg";
+import shawarmaRealImg from "@/assets/shawarma-real.jpg";
+import chickenAndChipsImg from "@/assets/chicken-and-chips.jpg";
+import tigernuttImg from "@/assets/tigernut.jpg";
+import smallChopsImg from "@/assets/small-chops.jpg";
+
 export type ProductSize = {
   label: string;
   description?: string;
@@ -59,7 +69,7 @@ export const pizzaProducts: Product[] = [
     name: "Chicken Sauté Pizza",
     description: "Sautéed Chicken, sausage, BBQ sauce, and green capsicum on our signature crust.",
     category: "pizza",
-    imageUrl: pizzaImg,
+    imageUrl: chickenSautePizzaImg,
     basePrice: 7500,
     sizes: [
       { label: "Small", description: "8 inches", price: 7500 },
@@ -75,7 +85,7 @@ export const pizzaProducts: Product[] = [
     name: "Beefy Sensation Pizza",
     description: "Juicy beef, red bonnet pepper, and green capsicum — bold and fiery on every bite.",
     category: "pizza",
-    imageUrl: pizzaImg,
+    imageUrl: beefPizzaImg,
     basePrice: 7500,
     sizes: [
       { label: "Small", description: "8 inches", price: 7500 },
@@ -90,7 +100,7 @@ export const pizzaProducts: Product[] = [
     name: "Suya Pizza",
     description: "Suya (Mutton), authentic Suya Spice, and green capsicum — savory street flavors on a pizza!",
     category: "pizza",
-    imageUrl: pizzaImg,
+    imageUrl: suyaPizzaImg,
     basePrice: 7500,
     sizes: [
       { label: "Small", description: "8 inches", price: 7500 },
@@ -125,7 +135,7 @@ export const burgerProducts: Product[] = [
     name: "Crispy Chicken Burger",
     description: "Juicy burger bun, creamy sauce, crispy golden chicken & fresh lettuce.",
     category: "burgers",
-    imageUrl: burgerImg,
+    imageUrl: cheeseburgerImg,
     basePrice: 2700,
     extras: [
       { name: "Extra Chicken", price: 2000 },
@@ -139,7 +149,7 @@ export const burgerProducts: Product[] = [
     name: "Classic Cheeseburger",
     description: "Burger bun, creamy sauce, Crispy Chicken, Cheddar cheese slice & lettuce.",
     category: "burgers",
-    imageUrl: burgerImg,
+    imageUrl: cheeseburgerImg,
     basePrice: 3500,
     extras: [
       { name: "Extra Cheese", price: 500 },
@@ -152,7 +162,7 @@ export const burgerProducts: Product[] = [
     name: "Creamy Shawarma Wrap",
     description: "2 shawarma bread, Chicken, Beef, 2 Sausages & Veggies — loaded and satisfying.",
     category: "burgers",
-    imageUrl: shawarmaImg,
+    imageUrl: shawarmaRealImg,
     basePrice: 3500,
     extras: [
       { name: "Extra Sausage", price: 500 },
@@ -169,7 +179,7 @@ export const shawarmaProducts: Product[] = [
     name: "Chicken Shawarma",
     description: "Tender grilled chicken, fresh veggies, and our signature garlic sauce wrapped in warm bread.",
     category: "shawarma",
-    imageUrl: shawarmaImg,
+    imageUrl: shawarmaRealImg,
     basePrice: 2500,
     extras: [
       { name: "Extra Sauce", price: 200 },
@@ -183,7 +193,7 @@ export const shawarmaProducts: Product[] = [
     name: "Beef Shawarma",
     description: "Seasoned beef strips, fresh crunchy veggies, garlic sauce in warm pita bread.",
     category: "shawarma",
-    imageUrl: shawarmaImg,
+    imageUrl: shawarmaRealImg,
     basePrice: 2800,
     extras: [
       { name: "Extra Sauce", price: 200 },
@@ -196,7 +206,7 @@ export const shawarmaProducts: Product[] = [
     name: "Mixed Shawarma",
     description: "The best of both worlds — chicken and beef combination with fresh veggies and sauce.",
     category: "shawarma",
-    imageUrl: shawarmaImg,
+    imageUrl: shawarmaRealImg,
     basePrice: 3200,
     extras: [
       { name: "Extra Sauce", price: 200 },
@@ -210,7 +220,7 @@ export const shawarmaProducts: Product[] = [
     name: "XL Shawarma Wrap",
     description: "Double portion — chicken, beef, 2 sausages, extra veggies and sauce. For the hungry ones.",
     category: "shawarma",
-    imageUrl: shawarmaImg,
+    imageUrl: shawarmaRealImg,
     basePrice: 4500,
     extras: [
       { name: "Extra Sausage", price: 500 },
@@ -227,7 +237,7 @@ export const fingerFoodProducts: Product[] = [
     name: "Crispy Chicken & Chips",
     description: "1 Crunchy Chicken, Crispy Chips, and 1 ketchup. The perfect combo.",
     category: "finger-foods",
-    imageUrl: fingerFoodsImg,
+    imageUrl: chickenAndChipsImg,
     basePrice: 4000,
     extras: [
       { name: "Extra Chicken", price: 2000 },
@@ -242,7 +252,7 @@ export const fingerFoodProducts: Product[] = [
     name: "Crunchy Fried Chicken",
     description: "2 crunchy golden chickens and 1 ketchup. Double the crunch, double the love.",
     category: "finger-foods",
-    imageUrl: fingerFoodsImg,
+    imageUrl: chickenAndChipsImg,
     basePrice: 3500,
     extras: [
       { name: "Extra Chicken", price: 2000 },
@@ -255,7 +265,7 @@ export const fingerFoodProducts: Product[] = [
     name: "Tigernut Drink",
     description: "Refreshing blend of Tigernuts, Coconut, and Ginger. Creamy and naturally sweet.",
     category: "finger-foods",
-    imageUrl: fingerFoodsImg,
+    imageUrl: tigernuttImg,
     basePrice: 2000,
     ingredients: ["Tigernuts", "Coconut", "Ginger"],
   },
@@ -327,7 +337,7 @@ export const pastryProducts: Product[] = [
     name: "Small Chops Pack S",
     description: "3 Springrolls, 3 Samosas, 1 Crispy Chicken, & 4 puffs. Perfect starter pack.",
     category: "pastries",
-    imageUrl: pastriesImg,
+    imageUrl: smallChopsImg,
     basePrice: 4000,
     extras: [
       { name: "Springroll", price: 400 },
@@ -346,7 +356,7 @@ export const pastryProducts: Product[] = [
     name: "Small Chops Pack M",
     description: "5 Springrolls, 5 Samosas, 2 Crispy Chickens, & 10 puffs. Great for sharing.",
     category: "pastries",
-    imageUrl: pastriesImg,
+    imageUrl: smallChopsImg,
     basePrice: 7000,
     extras: [
       { name: "Springroll", price: 400 },
@@ -364,7 +374,7 @@ export const pastryProducts: Product[] = [
     name: "Small Chops Pack L",
     description: "12 Springrolls, 12 Samosas, 2 Crispy Chickens, 5 Corndogs, & 20 puffs. Party ready!",
     category: "pastries",
-    imageUrl: pastriesImg,
+    imageUrl: smallChopsImg,
     basePrice: 14000,
     extras: [
       { name: "Springroll", price: 400 },
