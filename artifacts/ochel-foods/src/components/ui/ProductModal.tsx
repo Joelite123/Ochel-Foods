@@ -15,18 +15,21 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [selectedSizeIndex, setSelectedSizeIndex] = useState(0);
+  const [selectedCrustIndex, setSelectedCrustIndex] = useState(0);
   const [extraQtys, setExtraQtys] = useState<Record<string, number>>({});
   const [removedIngredients, setRemovedIngredients] = useState<string[]>([]);
   const [note, setNote] = useState("");
 
   const selectedSize = product.sizes?.[selectedSizeIndex];
+  const selectedCrust = product.crusts?.[selectedCrustIndex];
   const basePrice = selectedSize ? selectedSize.price : product.basePrice;
+  const crustPriceAdd = selectedCrust?.priceAdd ?? 0;
 
   const extrasTotal = product.extras
     ? product.extras.reduce((sum, extra) => sum + extra.price * (extraQtys[extra.name] || 0), 0)
     : 0;
 
-  const totalPrice = (basePrice + extrasTotal) * quantity;
+  const totalPrice = (basePrice + crustPriceAdd + extrasTotal) * quantity;
 
   const handleExtraChange = (name: string, delta: number) => {
     setExtraQtys((prev) => {
@@ -49,14 +52,20 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
           .map((e) => ({ name: e.name, quantity: extraQtys[e.name], price: e.price }))
       : [];
 
+    const sizeLabel = selectedSize
+      ? `${selectedSize.label}${selectedSize.description ? ` (${selectedSize.description})` : ""}`
+      : undefined;
+    const crustLabel = selectedCrust ? selectedCrust.label : undefined;
+    const sizeWithCrust = sizeLabel && crustLabel
+      ? `${sizeLabel} · ${crustLabel} crust`
+      : sizeLabel ?? crustLabel;
+
     addItem({
       productId: product.id,
       name: product.name,
       category: product.category,
-      size: selectedSize
-        ? `${selectedSize.label}${selectedSize.description ? ` (${selectedSize.description})` : ""}`
-        : undefined,
-      price: basePrice + extrasTotal,
+      size: sizeWithCrust,
+      price: basePrice + crustPriceAdd + extrasTotal,
       quantity,
       extras,
       removedIngredients: removedIngredients.length > 0 ? removedIngredients : undefined,
@@ -64,7 +73,6 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
       imageUrl: product.imageUrl,
     });
 
-    // Show toast instead of auto-opening cart
     toast.success(`${product.name} added to cart!`, {
       description: `${quantity} × ${formatPrice(totalPrice)}`,
       icon: <CheckCircle2 className="w-5 h-5 text-green-500" />,
@@ -74,6 +82,7 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
     onClose();
     setQuantity(1);
     setSelectedSizeIndex(0);
+    setSelectedCrustIndex(0);
     setExtraQtys({});
     setRemovedIngredients([]);
     setNote("");
@@ -148,6 +157,35 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
                     </div>
                     <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(size.price)}</span>
                   </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Crust selection — pizza only */}
+          {product.crusts && product.crusts.length > 0 && (
+            <div>
+              <h3 className="font-chewy text-lg text-gray-800 mb-2">Choose Crust</h3>
+              <div className="relative flex bg-gray-100 rounded-xl p-1 gap-1">
+                {product.crusts.map((crust, idx) => (
+                  <button
+                    key={crust.label}
+                    type="button"
+                    onClick={() => setSelectedCrustIndex(idx)}
+                    className={`relative flex-1 py-2 text-sm font-semibold font-[Montserrat] rounded-lg transition-all duration-200 ${
+                      selectedCrustIndex === idx
+                        ? "bg-white text-gray-900 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {crust.label}
+                    {selectedCrustIndex === idx && (
+                      <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-[#E8192C] rounded-full" />
+                    )}
+                    {crust.priceAdd > 0 && (
+                      <span className="ml-1 text-xs text-[#E8192C]">+{formatPrice(crust.priceAdd)}</span>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>

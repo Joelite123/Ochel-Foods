@@ -27,6 +27,11 @@ export type ProductExtra = {
   price: number;
 };
 
+export type ProductCrust = {
+  label: string;
+  priceAdd: number;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -35,6 +40,7 @@ export type Product = {
   imageUrl: string;
   basePrice: number;
   sizes?: ProductSize[];
+  crusts?: ProductCrust[];
   extras?: ProductExtra[];
   ingredients?: string[];
   note?: string;
@@ -63,6 +69,11 @@ const pizzaExtras: ProductExtra[] = [
   { name: "Extra Toppings", price: 1000 },
 ];
 
+const pizzaCrusts: ProductCrust[] = [
+  { label: "Original", priceAdd: 0 },
+  { label: "Thin", priceAdd: 0 },
+];
+
 export const pizzaProducts: Product[] = [
   {
     id: "pizza-1",
@@ -76,6 +87,7 @@ export const pizzaProducts: Product[] = [
       { label: "Medium", description: "10 inches", price: 8000 },
       { label: "Large", description: "12 inches", price: 9500 },
     ],
+    crusts: pizzaCrusts,
     extras: pizzaExtras,
     ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Sautéed Chicken", "Sausage", "BBQ Sauce", "Green Capsicum"],
     tag: "Popular",
@@ -92,6 +104,7 @@ export const pizzaProducts: Product[] = [
       { label: "Medium", description: "10 inches", price: 8000 },
       { label: "Large", description: "12 inches", price: 9500 },
     ],
+    crusts: pizzaCrusts,
     extras: pizzaExtras,
     ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Beef", "Red Bonnet Pepper", "Green Capsicum"],
   },
@@ -107,6 +120,7 @@ export const pizzaProducts: Product[] = [
       { label: "Medium", description: "10 inches", price: 8000 },
       { label: "Large", description: "12 inches", price: 9500 },
     ],
+    crusts: pizzaCrusts,
     extras: pizzaExtras,
     ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Suya (Mutton)", "Suya Spice", "Green Capsicum"],
     tag: "Signature",
@@ -123,6 +137,7 @@ export const pizzaProducts: Product[] = [
       { label: "Medium", description: "10 inches", price: 8500 },
       { label: "Large", description: "12 inches", price: 10000 },
     ],
+    crusts: pizzaCrusts,
     extras: pizzaExtras,
     ingredients: ["Pizza Dough", "Tomato Sauce", "Mozzarella", "Chicken", "Beef", "BBQ Sauce", "Suya Spice", "Green Capsicum"],
     tag: "Best Value",
