@@ -120,7 +120,7 @@ export default function HomePage() {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              🔥 Combo Deals
+              🔥 Combos
             </button>
             {featuredByCategory.map((cat) => (
               <button

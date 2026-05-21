@@ -15,6 +15,7 @@ import HomePage from "@/pages/HomePage";
 import PizzaPage from "@/pages/PizzaPage";
 import BurgersPage from "@/pages/BurgersPage";
 import FingerFoodsPage from "@/pages/FingerFoodsPage";
+import DrinksPage from "@/pages/DrinksPage";
 import PastriesPage from "@/pages/PastriesPage";
 import BakedGoodiesPage from "@/pages/BakedGoodiesPage";
 import CombosPage from "@/pages/CombosPage";
@@ -168,6 +169,9 @@ function Router() {
       </Route>
       <Route path="/finger-foods">
         {() => <PublicLayout><FingerFoodsPage /></PublicLayout>}
+      </Route>
+      <Route path="/drinks">
+        {() => <PublicLayout><DrinksPage /></PublicLayout>}
       </Route>
       <Route path="/pastries">
         {() => <PublicLayout><PastriesPage /></PublicLayout>}

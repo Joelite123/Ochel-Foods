@@ -60,6 +60,7 @@ export const categories: Category[] = [
   { id: "pizza", name: "Pizza", slug: "/pizza", imageUrl: pizzaImg, color: "#E8192C" },
   { id: "burgers", name: "Burgers & Wraps", slug: "/burgers", imageUrl: burgerImg, color: "#FF6B35" },
   { id: "finger-foods", name: "Finger Foods", slug: "/finger-foods", imageUrl: fingerFoodsImg, color: "#E8192C" },
+  { id: "drinks", name: "Drinks", slug: "/drinks", imageUrl: tigernuttImg, color: "#0066CC" },
   { id: "pastries", name: "Pastries", slug: "/pastries", imageUrl: pastriesImg, color: "#FF6B35" },
   { id: "baked-goodies", name: "Baked Goodies", slug: "/baked-goodies", imageUrl: bananaBreadImg, color: "#FFB800" },
 ];
@@ -234,21 +235,24 @@ export const fingerFoodProducts: Product[] = [
     ],
     ingredients: ["Crunchy Fried Chicken (x2)", "Ketchup"],
   },
+];
+
+export const drinkProducts: Product[] = [
   {
-    id: "ff-3",
+    id: "drink-1",
     name: "Tigernut Drink",
     description: "Refreshing blend of Tigernuts, Coconut, and Ginger. Creamy and naturally sweet.",
-    category: "finger-foods",
+    category: "drinks",
     imageUrl: tigernuttImg,
     basePrice: 2000,
     ingredients: ["Tigernuts", "Coconut", "Ginger"],
   },
   {
-    id: "ff-4",
+    id: "drink-2",
     name: "Fruity Zobo Drink",
     description: "Roselle, Pineapple, Watermelon, Cucumber, Herbs & Spices. A refreshing classic.",
-    category: "finger-foods",
-    imageUrl: fingerFoodsImg,
+    category: "drinks",
+    imageUrl: tigernuttImg,
     basePrice: 500,
     ingredients: ["Roselle (Zobo leaves)", "Pineapple", "Watermelon", "Cucumber", "Herbs & Spices"],
     tag: "Refreshing",
@@ -496,14 +500,16 @@ export const allProducts: Product[] = [
   ...pizzaProducts,
   ...burgerProducts,
   ...fingerFoodProducts,
+  ...drinkProducts,
   ...pastryProducts,
   ...bakedGoodiesProducts,
 ];
 
 export const featuredByCategory = [
   { label: "Pizza", id: "featured-pizza", products: pizzaProducts },
-  { label: "Burgers & Wraps", id: "featured-burgers", products: burgerProducts },
+  { label: "Burgers", id: "featured-burgers", products: burgerProducts },
   { label: "Finger Foods", id: "featured-finger-foods", products: fingerFoodProducts },
+  { label: "Drinks", id: "featured-drinks", products: drinkProducts },
   { label: "Pastries", id: "featured-pastries", products: pastryProducts },
   { label: "Baked Goodies", id: "featured-baked", products: bakedGoodiesProducts },
 ];

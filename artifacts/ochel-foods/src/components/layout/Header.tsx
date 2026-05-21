@@ -11,6 +11,7 @@ const navLinks = [
   { label: "Pizza", href: "/pizza" },
   { label: "Burgers", href: "/burgers" },
   { label: "Finger Foods", href: "/finger-foods" },
+  { label: "Drinks", href: "/drinks" },
   { label: "Pastries", href: "/pastries" },
   { label: "Baked Goodies", href: "/baked-goodies" },
   { label: "About", href: "/about" },
