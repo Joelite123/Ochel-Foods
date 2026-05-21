@@ -507,7 +507,7 @@ export const allProducts: Product[] = [
 
 export const featuredByCategory = [
   { label: "Pizza", id: "featured-pizza", products: pizzaProducts },
-  { label: "Burgers", id: "featured-burgers", products: burgerProducts },
+  { label: "Burgers & Wraps", id: "featured-burgers", products: burgerProducts },
   { label: "Finger Foods", id: "featured-finger-foods", products: fingerFoodProducts },
   { label: "Drinks", id: "featured-drinks", products: drinkProducts },
   { label: "Pastries", id: "featured-pastries", products: pastryProducts },

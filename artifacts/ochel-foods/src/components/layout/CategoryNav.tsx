@@ -1,9 +1,9 @@
 import { Link } from "wouter";
 
 const navItems = [
-  { label: "Combos", href: "/combos" },
+  { label: "Special Offers", href: "/combos" },
   { label: "Pizza", href: "/pizza" },
-  { label: "Burgers", href: "/burgers" },
+  { label: "Burgers & Wraps", href: "/burgers" },
   { label: "Finger Foods", href: "/finger-foods" },
   { label: "Drinks", href: "/drinks" },
   { label: "Pastries", href: "/pastries" },

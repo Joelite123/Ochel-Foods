@@ -110,7 +110,7 @@ export default function HomePage() {
       <div className="sticky top-[62px] z-40 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-1.5 overflow-x-auto py-2.5 scrollbar-hide">
-            {/* Combo Deals tab — first */}
+            {/* Special Offers tab — first */}
             <button
               data-testid="featured-tab-combos"
               onClick={() => scrollToSection(COMBO_TAB_ID)}
@@ -120,7 +120,7 @@ export default function HomePage() {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              🔥 Combos
+              🔥 Special Offers
             </button>
             {featuredByCategory.map((cat) => (
               <button
@@ -324,7 +324,7 @@ export default function HomePage() {
                 ref={(el) => { sectionRefs.current[COMBO_TAB_ID] = el; }}
               >
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="font-chewy text-3xl text-gray-900">🔥 Combo Deals</h3>
+                  <h3 className="font-chewy text-3xl text-gray-900">🔥 Special Offers</h3>
                   <Link
                     href="/combos"
                     className="text-[#E8192C] font-semibold font-[Montserrat] text-sm hover:underline"

@@ -13,7 +13,7 @@ export default function CombosPage() {
       {/* Header banner */}
       <div className="bg-[#E8192C] py-12 px-4 text-center">
         <p className="text-white/80 font-[Montserrat] text-sm uppercase tracking-widest mb-2">Special Offers</p>
-        <h1 className="font-chewy text-5xl md:text-6xl text-white mb-3">Combo Deals</h1>
+        <h1 className="font-chewy text-5xl md:text-6xl text-white mb-3">Special Offers</h1>
         <p className="text-white/80 font-[Montserrat] text-base max-w-md mx-auto">
           Bundled favourites at unbeatable prices. More food, less spend.
         </p>
