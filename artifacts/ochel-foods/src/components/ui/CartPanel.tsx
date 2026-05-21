@@ -8,7 +8,7 @@ import {
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRewards } from "@/contexts/RewardContext";
-import { DELIVERY_ZONES, formatPrice } from "@/data/menuData";
+import { DELIVERY_ZONES, drinkProducts, formatPrice } from "@/data/menuData";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -109,7 +109,7 @@ type CheckoutForm = {
 };
 
 export default function CartPanel() {
-  const { items, isCartOpen, setIsCartOpen, removeItem, updateQuantity, subtotal, total, setDeliveryFee, deliveryFee, clearCart } = useCart();
+  const { items, isCartOpen, setIsCartOpen, removeItem, updateQuantity, addItem, subtotal, total, setDeliveryFee, deliveryFee, clearCart } = useCart();
   const { user, profile } = useAuth();
   const { walletBalance, walletApplied, setWalletApplied, refresh: refreshRewards } = useRewards();
 
@@ -161,6 +161,7 @@ export default function CartPanel() {
   const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
   const hoursStatus = useMemo(() => getHoursStatus(openHours, closeHour), [openHours, closeHour]);
 
+  const [drinkNudgeDismissed, setDrinkNudgeDismissed] = useState(false);
   const [step, setStep] = useState<"cart" | "checkout">("cart");
   const [form, setForm] = useState<CheckoutForm>({
     name: profile?.full_name || "",
@@ -438,6 +439,55 @@ export default function CartPanel() {
                   </div>
                 </div>
               ))}
+
+              {/* ── Drink upsell nudge ── */}
+              {!drinkNudgeDismissed && !items.some((i) => i.category === "drinks") && (
+                <div className="mt-1 rounded-2xl border-2 border-[#FFB800] bg-amber-50 p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-lg">🥤</span>
+                      <p className="font-chewy text-base text-gray-900 leading-tight">
+                        Complete your meal with a drink!
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setDrinkNudgeDismissed(true)}
+                      className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5"
+                      aria-label="Dismiss"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {drinkProducts.map((drink) => (
+                      <div key={drink.id} className="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-amber-100">
+                        <div className="min-w-0">
+                          <p className="font-[Montserrat] text-sm font-semibold text-gray-800 leading-tight truncate">
+                            {drink.name}
+                          </p>
+                          <p className="font-chewy text-[#E8192C] text-sm">{formatPrice(drink.basePrice)}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            addItem({
+                              productId: drink.id,
+                              name: drink.name,
+                              category: "drinks",
+                              price: drink.basePrice,
+                              quantity: 1,
+                              imageUrl: drink.imageUrl,
+                            });
+                            toast.success(`${drink.name} added!`);
+                          }}
+                          className="flex-shrink-0 bg-[#FFB800] hover:bg-[#e5a600] text-black text-xs font-bold px-3 py-1.5 rounded-lg font-[Montserrat] transition-colors"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
