@@ -19,13 +19,6 @@ export default function CombosPage() {
         </p>
       </div>
 
-      {/* Savings banner */}
-      <div className="bg-green-600 py-2.5 px-4 text-center">
-        <p className="text-white font-[Montserrat] text-sm font-semibold">
-          Save up to {formatPrice(Math.max(...comboDealProducts.map(c => c.originalPrice - c.comboPrice)))} on a single order · All combos include free selection
-        </p>
-      </div>
-
       {/* Combo list */}
       <section className="max-w-3xl mx-auto px-4 py-10 sm:py-14">
         <div className="flex flex-col gap-5">

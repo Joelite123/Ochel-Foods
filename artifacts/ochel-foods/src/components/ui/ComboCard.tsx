@@ -97,10 +97,6 @@ export default function ComboCard({ combo }: ComboCardProps) {
           </button>
         </div>
 
-        {/* Savings highlight */}
-        <p className="text-green-600 text-xs font-semibold font-[Montserrat] mt-1.5">
-          You save {formatPrice(savings)}
-        </p>
       </div>
     </motion.div>
   );
