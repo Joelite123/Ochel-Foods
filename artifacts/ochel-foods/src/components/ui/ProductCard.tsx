@@ -25,11 +25,17 @@ export default function ProductCard({ product }: ProductCardProps) {
         onClick={() => setModalOpen(true)}
       >
         <div className="relative overflow-hidden bg-gray-50 aspect-[4/3]">
-          <img
-            src={product.imageUrl}
-            alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
+          {product.imageUrl ? (
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-50 to-yellow-50">
+              <span className="text-5xl">🍽️</span>
+            </div>
+          )}
           {product.tag && (
             <span className="absolute top-3 left-3 bg-[#E8192C] text-white text-xs font-bold px-2 py-1 rounded-full font-[Montserrat]">
               {product.tag}

@@ -1,19 +1,28 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { pastryProducts } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
+import { type Product } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 
-const smallChops = pastryProducts.filter((p) => p.id.includes("smallchops"));
-const donuts = pastryProducts.filter((p) => p.id.includes("donut"));
-const meatpie = pastryProducts.filter((p) => p.id.includes("meatpie"));
-
 export default function PastriesPage() {
   const [search, setSearch] = useState("");
+  const { byCategory, loading } = useMenuData();
+  const pastryProducts = byCategory("pastries");
 
-  const filterProducts = (products: typeof pastryProducts) =>
+  const smallChops = pastryProducts.filter((p) =>
+    p.name.toLowerCase().includes("small chops") || p.name.toLowerCase().includes("smallchop")
+  );
+  const donuts = pastryProducts.filter((p) =>
+    p.name.toLowerCase().includes("donut") || p.name.toLowerCase().includes("kwabaegi")
+  );
+  const meatpie = pastryProducts.filter((p) =>
+    p.name.toLowerCase().includes("meatpie") || p.name.toLowerCase().includes("meat pie")
+  );
+
+  const filterProducts = (products: Product[]) =>
     search
       ? products.filter(
           (p) =>
@@ -65,51 +74,61 @@ export default function PastriesPage() {
             </p>
           </div>
 
-          {filterProducts(smallChops).length > 0 && (
-            <div className="mb-12">
-              <h2 className="font-chewy text-3xl text-gray-900 mb-6">Small Chops</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filterProducts(smallChops).map((product, idx) => (
-                  <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
-                    <ProductCard product={product} />
-                  </motion.div>
-                ))}
-              </div>
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-64" />
+              ))}
             </div>
-          )}
+          ) : (
+            <>
+              {filterProducts(smallChops).length > 0 && (
+                <div className="mb-12">
+                  <h2 className="font-chewy text-3xl text-gray-900 mb-6">Small Chops</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filterProducts(smallChops).map((product, idx) => (
+                      <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {filterProducts(donuts).length > 0 && (
-            <div className="mb-12">
-              <h2 className="font-chewy text-3xl text-gray-900 mb-2">Donuts</h2>
-              <p className="text-sm text-gray-500 font-[Montserrat] mb-6">Per piece · Minimum order of 20 pieces</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {filterProducts(donuts).map((product, idx) => (
-                  <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
-                    <ProductCard product={product} />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
+              {filterProducts(donuts).length > 0 && (
+                <div className="mb-12">
+                  <h2 className="font-chewy text-3xl text-gray-900 mb-2">Donuts</h2>
+                  <p className="text-sm text-gray-500 font-[Montserrat] mb-6">Per piece · Minimum order of 20 pieces</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {filterProducts(donuts).map((product, idx) => (
+                      <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {filterProducts(meatpie).length > 0 && (
-            <div>
-              <h2 className="font-chewy text-3xl text-gray-900 mb-6">Meatpie</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filterProducts(meatpie).map((product, idx) => (
-                  <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
-                    <ProductCard product={product} />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
+              {filterProducts(meatpie).length > 0 && (
+                <div>
+                  <h2 className="font-chewy text-3xl text-gray-900 mb-6">Meatpie</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filterProducts(meatpie).map((product, idx) => (
+                      <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {filterProducts(smallChops).length === 0 && filterProducts(donuts).length === 0 && filterProducts(meatpie).length === 0 && (
-            <div className="text-center py-16">
-              <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
-              <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>
-            </div>
+              {filterProducts(smallChops).length === 0 && filterProducts(donuts).length === 0 && filterProducts(meatpie).length === 0 && (
+                <div className="text-center py-16">
+                  <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
+                  <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

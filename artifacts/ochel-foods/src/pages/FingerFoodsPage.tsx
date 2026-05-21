@@ -1,18 +1,25 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { fingerFoodProducts } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
+import { type Product } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 
-const individual = fingerFoodProducts.filter((p) => !p.id.includes("combo"));
-const combos = fingerFoodProducts.filter((p) => p.id.includes("combo"));
-
 export default function FingerFoodsPage() {
   const [search, setSearch] = useState("");
+  const { byCategory, loading } = useMenuData();
+  const fingerFoodProducts = byCategory("finger-foods");
 
-  const filterProducts = (products: typeof fingerFoodProducts) =>
+  const combos = fingerFoodProducts.filter((p) =>
+    p.name.toLowerCase().includes("combo") || p.name.toLowerCase().includes("& chips")
+  );
+  const individual = fingerFoodProducts.filter((p) =>
+    !combos.includes(p)
+  );
+
+  const filterProducts = (products: Product[]) =>
     search
       ? products.filter(
           (p) =>
@@ -67,49 +74,49 @@ export default function FingerFoodsPage() {
             </p>
           </div>
 
-          {filteredIndividual.length > 0 && (
-            <div className="mb-12">
-              <h2 className="font-chewy text-3xl text-gray-900 mb-6">Individual Items</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {filteredIndividual.map((product, idx) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.08 }}
-                  >
-                    <ProductCard product={product} />
-                  </motion.div>
-                ))}
-              </div>
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-64" />
+              ))}
             </div>
-          )}
+          ) : (
+            <>
+              {filteredIndividual.length > 0 && (
+                <div className="mb-12">
+                  <h2 className="font-chewy text-3xl text-gray-900 mb-6">Individual Items</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {filteredIndividual.map((product, idx) => (
+                      <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {filteredCombos.length > 0 && (
-            <div>
-              <h2 className="font-chewy text-3xl text-gray-900 mb-6">
-                Combos <span className="text-[#FFB800]">— Best Value</span>
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredCombos.map((product, idx) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.08 }}
-                  >
-                    <ProductCard product={product} />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
+              {filteredCombos.length > 0 && (
+                <div>
+                  <h2 className="font-chewy text-3xl text-gray-900 mb-6">
+                    Combos <span className="text-[#FFB800]">— Best Value</span>
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredCombos.map((product, idx) => (
+                      <motion.div key={product.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.08 }}>
+                        <ProductCard product={product} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {filteredIndividual.length === 0 && filteredCombos.length === 0 && (
-            <div className="text-center py-16">
-              <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
-              <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>
-            </div>
+              {filteredIndividual.length === 0 && filteredCombos.length === 0 && (
+                <div className="text-center py-16">
+                  <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
+                  <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

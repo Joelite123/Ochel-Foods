@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { drinkProducts } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
 import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 
 export default function DrinksPage() {
   const [search, setSearch] = useState("");
+  const { byCategory, loading } = useMenuData();
+  const drinkProducts = byCategory("drinks");
 
   const filtered = search
     ? drinkProducts.filter(
@@ -30,7 +32,7 @@ export default function DrinksPage() {
             <span className="font-[Montserrat] text-white/70 text-sm uppercase tracking-widest">Our Menu</span>
             <h1 className="font-chewy text-5xl md:text-6xl text-white mt-1 mb-3">Drinks</h1>
             <p className="font-[Montserrat] text-white/80 max-w-md mx-auto text-sm">
-              Fresh, natural, and made with love. Every sip is a taste of something special.
+              Freshly made natural drinks — creamy, refreshing, and full of flavor.
             </p>
           </motion.div>
         </div>
@@ -40,7 +42,7 @@ export default function DrinksPage() {
 
       <section className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-md mx-auto mb-10">
+          <div className="max-w-md mx-auto mb-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -49,20 +51,21 @@ export default function DrinksPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 data-testid="input-search-drinks"
                 placeholder="Search drinks or ingredients..."
-                className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#0066CC] focus:outline-none font-[Montserrat] text-sm shadow-sm"
+                className="w-full pl-12 pr-4 py-3.5 rounded-2xl border-2 border-gray-200 focus:border-[#E8192C] focus:outline-none font-[Montserrat] text-sm shadow-sm"
               />
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-64" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-16">
-              <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
-              <button
-                onClick={() => setSearch("")}
-                className="mt-4 text-[#0066CC] font-semibold font-[Montserrat] hover:underline"
-              >
-                Clear
-              </button>
+              <p className="font-chewy text-2xl text-gray-400">No drinks found for "{search}"</p>
+              <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

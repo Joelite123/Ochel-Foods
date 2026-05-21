@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Plus, Pencil, Trash2, Search, Upload, X, ChevronDown } from "lucide-react";
 import { supabase, DBProduct, DBCategory } from "@/lib/supabase";
+import { invalidateMenuCache } from "@/hooks/useMenuData";
 import { toast } from "sonner";
 
 type FormState = Partial<DBProduct> & { category_id: string };
@@ -112,6 +113,7 @@ export default function AdminProducts() {
     setSaving(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Product updated" : "Product added");
+    invalidateMenuCache();
     closeForm();
     load();
   };
@@ -123,6 +125,7 @@ export default function AdminProducts() {
     setDeleting(null);
     if (error) return toast.error(error.message);
     toast.success("Product deleted");
+    invalidateMenuCache();
     load();
   };
 

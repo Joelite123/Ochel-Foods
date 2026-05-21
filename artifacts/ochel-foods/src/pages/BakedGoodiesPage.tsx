@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { bakedGoodiesProducts } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
 import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
 
 export default function BakedGoodiesPage() {
   const [search, setSearch] = useState("");
+  const { byCategory, loading } = useMenuData();
+  const bakedGoodiesProducts = byCategory("baked-goodies");
 
   const filtered = search
     ? bakedGoodiesProducts.filter(
@@ -60,7 +62,13 @@ export default function BakedGoodiesPage() {
             </p>
           </div>
 
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-64" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-16">
               <p className="font-chewy text-2xl text-gray-400">No items found for "{search}"</p>
               <button onClick={() => setSearch("")} className="mt-4 text-[#E8192C] font-semibold font-[Montserrat] hover:underline">Clear</button>

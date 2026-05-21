@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { apiUrl } from "@/lib/api";
-import { categories, featuredByCategory, allProducts, comboDealProducts } from "@/data/menuData";
+import { comboDealProducts } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
 import ProductCard from "@/components/ui/ProductCard";
 import ComboCard from "@/components/ui/ComboCard";
 import PromoBanner from "@/components/ui/PromoBanner";
@@ -40,8 +41,19 @@ export default function HomePage() {
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const { products, categories, loading: menuLoading } = useMenuData();
+
+  const featuredByCategory = [
+    { label: "Pizza", id: "featured-pizza", slug: "/pizza", categorySlug: "pizza" },
+    { label: "Burgers & Wraps", id: "featured-burgers", slug: "/burgers", categorySlug: "burgers" },
+    { label: "Finger Foods", id: "featured-finger-foods", slug: "/finger-foods", categorySlug: "finger-foods" },
+    { label: "Drinks", id: "featured-drinks", slug: "/drinks", categorySlug: "drinks" },
+    { label: "Pastries", id: "featured-pastries", slug: "/pastries", categorySlug: "pastries" },
+    { label: "Baked Goodies", id: "featured-baked", slug: "/baked-goodies", categorySlug: "baked-goodies" },
+  ];
+
   const filteredResults = search
-    ? allProducts.filter(
+    ? products.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.description.toLowerCase().includes(search.toLowerCase())
@@ -74,7 +86,7 @@ export default function HomePage() {
   useEffect(() => {
     const handleScroll = () => {
       let currentId = COMBO_TAB_ID;
-      const allTabs = [COMBO_TAB_ID, ...featuredByCategory.map((c) => c.id)];
+      const allTabs = [COMBO_TAB_ID, ...featuredByCategory.map((c: { id: string }) => c.id)];
       for (const id of allTabs) {
         const el = sectionRefs.current[id];
         if (el) {
@@ -355,37 +367,50 @@ export default function HomePage() {
               </div>
 
               {/* ── REGULAR MENU CATEGORIES ──────────────────────────── */}
-              {featuredByCategory.map((cat) => (
-                <div
-                  key={cat.id}
-                  id={cat.id}
-                  ref={(el) => { sectionRefs.current[cat.id] = el; }}
-                >
-                  <div className="flex items-center justify-between mb-5">
-                    <h3 className="font-chewy text-3xl text-gray-900">{cat.label}</h3>
-                    <Link
-                      href={categories.find((c) => c.name.split(" ")[0] === cat.label.split(" ")[0])?.slug || "/"}
-                      className="text-[#E8192C] font-semibold font-[Montserrat] text-sm hover:underline"
-                      data-testid={`link-see-all-${cat.id}`}
-                    >
-                      See all →
-                    </Link>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    {cat.products.map((product, idx) => (
-                      <motion.div
-                        key={product.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ delay: idx * 0.08 }}
+              {featuredByCategory.map((cat) => {
+                const catProducts = products
+                  .filter((p) => p.category === cat.categorySlug)
+                  .slice(0, 4);
+                return (
+                  <div
+                    key={cat.id}
+                    id={cat.id}
+                    ref={(el) => { sectionRefs.current[cat.id] = el; }}
+                  >
+                    <div className="flex items-center justify-between mb-5">
+                      <h3 className="font-chewy text-3xl text-gray-900">{cat.label}</h3>
+                      <Link
+                        href={cat.slug}
+                        className="text-[#E8192C] font-semibold font-[Montserrat] text-sm hover:underline"
+                        data-testid={`link-see-all-${cat.id}`}
                       >
-                        <ProductCard product={product} />
-                      </motion.div>
-                    ))}
+                        See all →
+                      </Link>
+                    </div>
+                    {menuLoading ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        {[...Array(2)].map((_, i) => (
+                          <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-56" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        {catProducts.map((product, idx) => (
+                          <motion.div
+                            key={product.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: idx * 0.08 }}
+                          >
+                            <ProductCard product={product} />
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -9,7 +9,6 @@ import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRewards } from "@/contexts/RewardContext";
 import { DELIVERY_ZONES, drinkProducts, formatPrice } from "@/data/menuData";
-import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 /* ─── Delivery time helpers (now also reads from Supabase when available) ─── */
@@ -136,26 +135,32 @@ export default function CartPanel() {
   }, []);
 
   useEffect(() => {
-    // Load delivery zones
-    supabase.from("delivery_zones").select("*").eq("is_active", true).order("sort_order").then(({ data }) => {
-      if (data?.length) {
-        setDeliveryZones(data as DeliveryZoneDB[]);
-        setDeliveryFee(data[0].price);
-      }
-    });
-    // Load operating hours
-    supabase.from("operating_hours").select("*").order("day_of_week").then(({ data }) => {
-      if (data?.length) {
-        const map: Record<number, number> = {};
-        let maxClose = CLOSE_HOUR_FALLBACK;
-        (data as any[]).forEach((h) => {
-          if (!h.is_closed) map[h.day_of_week] = h.open_hour;
-          if (h.close_hour > maxClose) maxClose = h.close_hour;
-        });
-        if (Object.keys(map).length) setOpenHours(map);
-        setCloseHour(maxClose);
-      }
-    });
+    // Load delivery zones via API server (bypasses Supabase RLS)
+    fetch("/api/menu/delivery-zones")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: DeliveryZoneDB[]) => {
+        if (data?.length) {
+          setDeliveryZones(data);
+          setDeliveryFee(data[0].price);
+        }
+      })
+      .catch(() => {});
+    // Load operating hours via API server
+    fetch("/api/menu/operating-hours")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        if (data?.length) {
+          const map: Record<number, number> = {};
+          let maxClose = CLOSE_HOUR_FALLBACK;
+          data.forEach((h) => {
+            if (!h.is_closed) map[h.day_of_week] = h.open_hour;
+            if (h.close_hour > maxClose) maxClose = h.close_hour;
+          });
+          if (Object.keys(map).length) setOpenHours(map);
+          setCloseHour(maxClose);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
