@@ -47,7 +47,7 @@ function generateSlots(
     day.setDate(now.getDate() + dayOffset);
     const openH = openHours[day.getDay()] ?? 9;
 
-    for (let h = openH; h < closeHour; h++) {
+    for (let h = openH + 1; h < closeHour; h++) {
       for (const m of [0, 30]) {
         const slotTime = new Date(day);
         slotTime.setHours(h, m, 0, 0);
