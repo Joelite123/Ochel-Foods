@@ -14,7 +14,6 @@ import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/HomePage";
 import PizzaPage from "@/pages/PizzaPage";
 import BurgersPage from "@/pages/BurgersPage";
-import ShawarmaPage from "@/pages/ShawarmaPage";
 import FingerFoodsPage from "@/pages/FingerFoodsPage";
 import PastriesPage from "@/pages/PastriesPage";
 import BakedGoodiesPage from "@/pages/BakedGoodiesPage";
@@ -165,7 +164,7 @@ function Router() {
         {() => <PublicLayout><BurgersPage /></PublicLayout>}
       </Route>
       <Route path="/shawarma">
-        {() => <PublicLayout><ShawarmaPage /></PublicLayout>}
+        {() => <PublicLayout><BurgersPage /></PublicLayout>}
       </Route>
       <Route path="/finger-foods">
         {() => <PublicLayout><FingerFoodsPage /></PublicLayout>}

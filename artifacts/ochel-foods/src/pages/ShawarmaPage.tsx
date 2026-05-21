@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
-import { shawarmaProducts } from "@/data/menuData";
+import { burgerProducts } from "@/data/menuData";
 import ProductCard from "@/components/ui/ProductCard";
 import CategoryNav from "@/components/layout/CategoryNav";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
@@ -10,13 +10,13 @@ export default function ShawarmaPage() {
   const [search, setSearch] = useState("");
 
   const filtered = search
-    ? shawarmaProducts.filter(
+    ? burgerProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(search.toLowerCase()) ||
           p.description.toLowerCase().includes(search.toLowerCase()) ||
           (p.ingredients || []).some((ing) => ing.toLowerCase().includes(search.toLowerCase()))
       )
-    : shawarmaProducts;
+    : burgerProducts;
 
   return (
     <div className="min-h-screen">

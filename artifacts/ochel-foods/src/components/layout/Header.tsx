@@ -10,7 +10,6 @@ const navLinks = [
   { label: "Combos", href: "/combos" },
   { label: "Pizza", href: "/pizza" },
   { label: "Burgers", href: "/burgers" },
-  { label: "Shawarma", href: "/shawarma" },
   { label: "Finger Foods", href: "/finger-foods" },
   { label: "Pastries", href: "/pastries" },
   { label: "Baked Goodies", href: "/baked-goodies" },
