@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, User, Lock, Mail, Phone, ArrowLeft } from "lucide-react";
@@ -8,13 +8,33 @@ import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 type Tab = "login" | "signup";
 
 export default function LoginPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user, profile } = useAuth();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("login");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [awaitingRedirect, setAwaitingRedirect] = useState(false);
+
+  // Read ?next= param from URL (set by AdminGuard when redirecting to login)
+  const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+
+  // Once user + profile both load after a successful login, navigate to the right place
+  useEffect(() => {
+    if (!awaitingRedirect || !user) return;
+    // If profile hasn't loaded yet, wait — it comes via onAuthStateChange async
+    // But if nextPath is set (admin was trying to reach an admin page), honour it
+    if (nextPath) {
+      navigate(nextPath);
+      return;
+    }
+    // For normal login, wait for profile to determine role
+    if (profile) {
+      navigate(profile.role === "admin" ? "/admin" : "/account");
+    }
+    // If profile is still null after 2 s (no profile row), just go to /account
+  }, [awaitingRedirect, user, profile, nextPath]);
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({
@@ -30,7 +50,10 @@ export default function LoginPage() {
     const { error } = await signIn(loginForm.email, loginForm.password);
     setLoading(false);
     if (error) return setError(error);
-    navigate("/account");
+    // Trigger the smart redirect in useEffect above (waits for profile to load)
+    setAwaitingRedirect(true);
+    // Fallback: if profile never loads (no row in DB), go to /account after 3 s
+    setTimeout(() => navigate(nextPath || "/account"), 3000);
   };
 
   const handleSignup = async (e: React.FormEvent) => {

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -41,7 +42,16 @@ const queryClient = new QueryClient();
 /** Wrap admin pages — redirects to login if not admin */
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user, profile, isLoading } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) {
+      navigate(`/login?next=${encodeURIComponent(location)}`);
+    } else if (profile && profile.role !== "admin") {
+      navigate("/");
+    }
+  }, [isLoading, user, profile]);
 
   if (isLoading) {
     return (
@@ -51,15 +61,8 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
-    navigate("/login");
-    return null;
-  }
-
-  if (profile && profile.role !== "admin") {
-    navigate("/");
-    return null;
-  }
+  if (!user) return null;
+  if (profile && profile.role !== "admin") return null;
 
   return <>{children}</>;
 }
