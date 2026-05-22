@@ -25,6 +25,11 @@ create policy "Users can update own profile" on public.profiles for update using
 create policy "Admins can view all profiles" on public.profiles for select using (
   exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
 );
+create policy "Admins can update all profiles" on public.profiles for update using (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+) with check (
+  exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+);
 
 -- Auto-create profile on signup
 create or replace function public.handle_new_user()
