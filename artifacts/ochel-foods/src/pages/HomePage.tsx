@@ -344,13 +344,6 @@ export default function HomePage() {
                     See all →
                   </Link>
                 </div>
-                {/* Savings callout */}
-                <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 mb-5 flex items-center gap-3">
-                  <span className="text-2xl">💰</span>
-                  <p className="text-green-800 font-[Montserrat] text-sm font-semibold">
-                    Bundle & save — combo prices beat ordering items separately. Savings shown on each deal.
-                  </p>
-                </div>
                 <div className="flex flex-col gap-4">
                   {comboDealProducts.map((combo, idx) => (
                     <motion.div

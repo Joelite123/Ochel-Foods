@@ -6,16 +6,16 @@ import pastriesImg from "@/assets/pastries.png";
 import donutsImg from "@/assets/donuts.png";
 import bananaBreadImg from "@/assets/banana-bread.png";
 
-// Real food photos
-import pizzettaImg from "@/assets/pizzetta.jpg";
-import chickenSautePizzaImg from "@/assets/chicken-saute-pizza.jpg";
-import beefPizzaImg from "@/assets/beef-pizza.jpg";
-import suyaPizzaImg from "@/assets/suya-pizza.jpg";
-import cheeseburgerImg from "@/assets/cheeseburger.jpg";
-import shawarmaRealImg from "@/assets/shawarma-real.jpg";
-import chickenAndChipsImg from "@/assets/chicken-and-chips.jpg";
-import tigernuttImg from "@/assets/tigernut.jpg";
-import smallChopsImg from "@/assets/small-chops.jpg";
+// Real food photos (background removed)
+import pizzettaImg from "@/assets/pizzetta.png";
+import chickenSautePizzaImg from "@/assets/chicken-saute-pizza.png";
+import beefPizzaImg from "@/assets/beef-pizza.png";
+import suyaPizzaImg from "@/assets/suya-pizza.png";
+import cheeseburgerImg from "@/assets/cheeseburger-real.png";
+import shawarmaRealImg from "@/assets/shawarma-real.png";
+import chickenAndChipsImg from "@/assets/chicken-and-chips.png";
+import tigernuttImg from "@/assets/tigernut-drink.png";
+import smallChopsImg from "@/assets/small-chops.png";
 
 export type ProductSize = {
   label: string;
