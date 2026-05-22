@@ -71,7 +71,7 @@ const pizzaExtras: ProductExtra[] = [
 ];
 
 const pizzaCrusts: ProductCrust[] = [
-  { label: "Original", priceAdd: 0 },
+  { label: "Thick", priceAdd: 0 },
   { label: "Thin", priceAdd: 0 },
 ];
 

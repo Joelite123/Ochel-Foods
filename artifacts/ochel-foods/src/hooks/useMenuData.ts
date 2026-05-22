@@ -12,6 +12,12 @@ import {
   categories as staticCategories,
 } from "@/data/menuData";
 import { supabase } from "@/lib/supabase";
+import { type ProductCrust } from "@/data/menuData";
+
+const DEFAULT_PIZZA_CRUSTS: ProductCrust[] = [
+  { label: "Thick", priceAdd: 0 },
+  { label: "Thin", priceAdd: 0 },
+];
 
 type DBProduct = {
   id: string;
@@ -46,6 +52,7 @@ function dbProductToProduct(p: DBProduct, categorySlug: string): Product {
     imageUrl: p.image_url || "",
     basePrice: p.base_price,
     sizes: p.sizes ?? undefined,
+    crusts: categorySlug === "pizza" ? DEFAULT_PIZZA_CRUSTS : undefined,
     extras: p.extras ?? undefined,
     ingredients: p.ingredients ?? undefined,
     tag: p.tag ?? undefined,
