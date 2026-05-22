@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { apiUrl } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
@@ -135,32 +135,33 @@ export default function CartPanel() {
   }, []);
 
   useEffect(() => {
-    // Load delivery zones via API server (bypasses Supabase RLS)
-    fetch("/api/menu/delivery-zones")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: DeliveryZoneDB[]) => {
+    supabase
+      .from("delivery_zones")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }) => {
         if (data?.length) {
-          setDeliveryZones(data);
-          setDeliveryFee(data[0].price);
+          setDeliveryZones(data as DeliveryZoneDB[]);
+          setDeliveryFee((data as DeliveryZoneDB[])[0].price);
         }
-      })
-      .catch(() => {});
-    // Load operating hours via API server
-    fetch("/api/menu/operating-hours")
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: any[]) => {
+      });
+    supabase
+      .from("operating_hours")
+      .select("*")
+      .order("day_of_week")
+      .then(({ data }) => {
         if (data?.length) {
           const map: Record<number, number> = {};
           let maxClose = CLOSE_HOUR_FALLBACK;
-          data.forEach((h) => {
+          (data as any[]).forEach((h) => {
             if (!h.is_closed) map[h.day_of_week] = h.open_hour;
             if (h.close_hour > maxClose) maxClose = h.close_hour;
           });
           if (Object.keys(map).length) setOpenHours(map);
           setCloseHour(maxClose);
         }
-      })
-      .catch(() => {});
+      });
   }, []);
 
   const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
@@ -237,14 +238,22 @@ export default function CartPanel() {
     if (!code) return;
     setValidatingCode(true);
     setReferralValid(null);
-    const res = await fetch(apiUrl("/api/referrals/validate"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, userId: user?.id, phone: form.phone }),
-    });
-    const data = await res.json();
-    setReferralValid(data.valid);
-    setReferralMsg(data.valid ? `Valid! Referred by ${data.referrerName}` : data.error);
+    const { data: refCode } = await supabase
+      .from("referral_codes")
+      .select("*, profiles(full_name)")
+      .eq("code", code)
+      .single();
+    if (!refCode) {
+      setReferralValid(false);
+      setReferralMsg("Invalid referral code");
+    } else if (user?.id && user.id === refCode.user_id) {
+      setReferralValid(false);
+      setReferralMsg("You cannot use your own referral code");
+    } else {
+      const referrerName = (refCode as any).profiles?.full_name ?? "a friend";
+      setReferralValid(true);
+      setReferralMsg(`Valid! Referred by ${referrerName}`);
+    }
     setValidatingCode(false);
   };
 
@@ -286,10 +295,12 @@ export default function CartPanel() {
     if (!canCheckout) return;
     setSavingOrder(true);
     try {
-      await fetch(apiUrl("/api/orders"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const promoDiscount = 0;
+
+      // Insert order
+      const { data: order } = await supabase
+        .from("orders")
+        .insert({
           user_id: user?.id ?? null,
           customer_name: form.name,
           customer_phone: form.phone,
@@ -298,26 +309,76 @@ export default function CartPanel() {
           delivery_zone_id: form.deliveryZoneId || null,
           delivery_fee: deliveryFee,
           subtotal,
-          total: finalTotal,
-          discount_amount: walletApplied,
+          total: finalTotal - promoDiscount,
+          discount_amount: walletApplied + promoDiscount,
           referral_wallet_used: walletApplied,
+          promo_code: null,
+          status: "pending",
           delivery_time: selectedSlot?.label ?? null,
           special_instructions: form.instructions || null,
           referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
-          items: items.map((i) => ({
-            productId: i.productId,
-            name: i.name,
-            size: i.size,
-            price: i.price,
-            quantity: i.quantity,
-            extras: i.extras,
-            removedIngredients: i.removedIngredients,
-            note: i.note,
-          })),
-        }),
-      });
+        })
+        .select()
+        .single();
 
-      if (walletApplied > 0) refreshRewards();
+      if (order) {
+        // Insert order items
+        if (items.length) {
+          await supabase.from("order_items").insert(
+            items.map((i) => ({
+              order_id: order.id,
+              product_id: i.productId || null,
+              product_name: i.name,
+              size: i.size || null,
+              price: i.price,
+              quantity: i.quantity,
+              extras: i.extras || null,
+              removed_ingredients: i.removedIngredients || null,
+              note: i.note || null,
+            }))
+          );
+        }
+
+        // Deduct wallet balance if used
+        if (user?.id && walletApplied > 0) {
+          const { data: rewards } = await supabase
+            .from("user_rewards")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("reward_type", "cash_credit")
+            .eq("is_used", false)
+            .gt("balance", 0)
+            .order("expires_at", { ascending: true });
+
+          let remaining = walletApplied;
+          for (const reward of rewards ?? []) {
+            if (remaining <= 0) break;
+            const deduct = Math.min(remaining, Number(reward.balance));
+            const newBalance = Number(reward.balance) - deduct;
+            await supabase
+              .from("user_rewards")
+              .update({ balance: newBalance, is_used: newBalance <= 0 })
+              .eq("id", reward.id);
+            remaining -= deduct;
+          }
+
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("referral_wallet_balance")
+            .eq("id", user.id)
+            .single();
+          if (profileData) {
+            await supabase.from("profiles").update({
+              referral_wallet_balance: Math.max(
+                0,
+                Number(profileData.referral_wallet_balance) - walletApplied
+              ),
+            }).eq("id", user.id);
+          }
+
+          refreshRewards();
+        }
+      }
     } catch {
       // Non-blocking — still open WhatsApp even if DB save fails
     }

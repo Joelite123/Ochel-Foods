@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { toast } from "sonner";
-import { apiUrl } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 import { comboDealProducts } from "@/data/menuData";
 import { useMenuData } from "@/hooks/useMenuData";
 import ProductCard from "@/components/ui/ProductCard";
@@ -433,17 +433,15 @@ function NewsletterSection() {
     if (!email.includes("@")) return toast.error("Enter a valid email");
     setSubmitting(true);
     try {
-      const res = await fetch(apiUrl("/api/subscribe"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name }),
-      });
-      if (res.ok) {
-        setDone(true);
-        toast.success("You're subscribed! 🎉");
-      } else {
-        throw new Error();
-      }
+      const { error } = await supabase
+        .from("newsletter_subscribers")
+        .upsert(
+          { email: email.toLowerCase(), name: name || null, is_active: true },
+          { onConflict: "email" }
+        );
+      if (error) throw error;
+      setDone(true);
+      toast.success("You're subscribed! 🎉");
     } catch {
       toast.error("Something went wrong. Please try again.");
     }

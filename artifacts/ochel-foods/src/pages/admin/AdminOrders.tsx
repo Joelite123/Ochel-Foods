@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Search, RefreshCw, Eye, X } from "lucide-react";
-import { apiUrl } from "@/lib/api";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
@@ -25,6 +24,80 @@ type OrderWithItems = DBOrder & {
     note: string | null;
   }>;
 };
+
+async function processReferralReward(orderId: string, order: OrderWithItems) {
+  if (!order.referral_code_used) return;
+
+  const { data: refCode } = await supabase
+    .from("referral_codes")
+    .select("*, profiles(full_name)")
+    .eq("code", order.referral_code_used)
+    .single();
+
+  if (!refCode) return;
+  if (order.user_id && order.user_id === refCode.user_id) return;
+
+  const { data: existing } = await supabase
+    .from("referrals")
+    .select("id")
+    .eq("code", order.referral_code_used)
+    .eq("status", "rewarded")
+    .or(`referred_id.eq.${order.user_id ?? "null"},referred_phone.eq.${order.customer_phone}`);
+
+  if (existing && existing.length > 0) return;
+
+  const { data: settings } = await supabase
+    .from("reward_settings")
+    .select("*")
+    .eq("reward_type", "cash_credit")
+    .eq("is_active", true)
+    .single();
+
+  const rewardAmount = settings?.reward_value ?? 2000;
+  const expiryDays = settings?.expiry_days ?? 60;
+  const expiresAt = expiryDays > 0
+    ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  await supabase.from("referrals").insert({
+    referrer_id: refCode.user_id,
+    referred_id: order.user_id ?? null,
+    referred_phone: order.customer_phone,
+    code: order.referral_code_used,
+    status: "rewarded",
+    reward_amount: rewardAmount,
+    reward_type: "cash_credit",
+    order_id: orderId,
+    rewarded_at: new Date().toISOString(),
+  });
+
+  await supabase.from("user_rewards").insert({
+    user_id: refCode.user_id,
+    reward_type: "cash_credit",
+    amount: rewardAmount,
+    balance: rewardAmount,
+    description: `Referral reward — friend used code ${order.referral_code_used}`,
+    source: "referral",
+    expires_at: expiresAt,
+    is_used: false,
+  });
+
+  const { data: p } = await supabase
+    .from("profiles")
+    .select("referral_wallet_balance")
+    .eq("id", refCode.user_id)
+    .single();
+  if (p) {
+    await supabase.from("profiles").update({
+      referral_wallet_balance: Number(p.referral_wallet_balance) + rewardAmount,
+    }).eq("id", refCode.user_id);
+  }
+
+  await supabase.from("referral_codes").update({
+    total_referrals: refCode.total_referrals + 1,
+    total_earned: Number(refCode.total_earned) + rewardAmount,
+  }).eq("id", refCode.id);
+}
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
@@ -58,15 +131,11 @@ export default function AdminOrders() {
 
     toast.success(`Order marked as ${labelMap[status]}`);
 
-    // If delivered, trigger referral reward via API
+    // If delivered, process referral reward directly via Supabase
     if (status === "delivered") {
       const order = orders.find((o) => o.id === orderId);
       if (order?.referral_code_used) {
-        fetch(apiUrl("/api/referrals/reward"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderId }),
-        }).catch(() => {});
+        processReferralReward(orderId, order).catch(() => {});
       }
     }
   };

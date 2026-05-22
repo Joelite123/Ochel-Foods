@@ -11,8 +11,7 @@ import {
   allProducts as staticAllProducts,
   categories as staticCategories,
 } from "@/data/menuData";
-
-const API_BASE = "/api";
+import { supabase } from "@/lib/supabase";
 
 type DBProduct = {
   id: string;
@@ -78,14 +77,15 @@ let fetchPromise: Promise<void> | null = null;
 
 async function fetchMenuData() {
   try {
-    const res = await fetch(`${API_BASE}/menu`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json() as { categories: DBCategory[]; products: DBProduct[] };
+    const [catsResult, prodsResult] = await Promise.all([
+      supabase.from("categories").select("*").eq("is_active", true).order("sort_order"),
+      supabase.from("products").select("*").eq("is_available", true).order("sort_order"),
+    ]);
 
-    const { categories: dbCats, products: dbProds } = json;
+    const dbCats = catsResult.data as DBCategory[] | null;
+    const dbProds = prodsResult.data as DBProduct[] | null;
 
-    if (dbCats?.length > 0 && dbProds?.length > 0) {
-      // catMap: category_id → bare slug without leading slash
+    if (dbCats && dbCats.length > 0 && dbProds && dbProds.length > 0) {
       const catMap: Record<string, string> = {};
       dbCats.forEach((c) => { catMap[c.id] = c.slug.replace(/^\//, ""); });
 
@@ -99,7 +99,6 @@ async function fetchMenuData() {
     // fall through to static data
   }
 
-  // Fallback to static data when API unavailable
   cachedCategories = staticCategories.map((c) => ({ ...c }));
   cachedProducts = staticAllProducts;
 }
