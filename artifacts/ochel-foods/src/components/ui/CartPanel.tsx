@@ -120,6 +120,7 @@ export default function CartPanel() {
   const [referralMsg, setReferralMsg] = useState("");
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [zoneSearch, setZoneSearch] = useState("");
   const [zoneOpen, setZoneOpen] = useState(false);
   const zoneDropdownRef = useRef<HTMLDivElement>(null);
@@ -293,11 +294,21 @@ export default function CartPanel() {
   /* ── Save order to DB + open WhatsApp ── */
   const handlePlaceOrder = async () => {
     if (!canCheckout) return;
+
+    // Open WhatsApp IMMEDIATELY — must happen synchronously before any awaits
+    // or browsers will block it as an unsolicited popup.
+    window.open(`https://wa.me/2349056351651?text=${buildWhatsAppMessage()}`, "_blank", "noopener,noreferrer");
+
+    // Close cart and clear state right away so the user sees a clean exit
+    clearCart();
+    setWalletApplied(0);
+    handleClose();
+
+    // Save order to DB in the background (non-blocking)
     setSavingOrder(true);
     try {
       const promoDiscount = 0;
 
-      // Insert order
       const { data: order } = await supabase
         .from("orders")
         .insert({
@@ -322,7 +333,6 @@ export default function CartPanel() {
         .single();
 
       if (order) {
-        // Insert order items
         if (items.length) {
           await supabase.from("order_items").insert(
             items.map((i) => ({
@@ -339,7 +349,6 @@ export default function CartPanel() {
           );
         }
 
-        // Deduct wallet balance if used
         if (user?.id && walletApplied > 0) {
           const { data: rewards } = await supabase
             .from("user_rewards")
@@ -380,15 +389,9 @@ export default function CartPanel() {
         }
       }
     } catch {
-      // Non-blocking — still open WhatsApp even if DB save fails
+      // Non-blocking
     }
     setSavingOrder(false);
-
-    // Open WhatsApp
-    window.open(`https://wa.me/2349056351651?text=${buildWhatsAppMessage()}`, "_blank", "noopener,noreferrer");
-    clearCart();
-    setWalletApplied(0);
-    handleClose();
   };
 
   const canCheckout = form.name.trim() && form.phone.trim() && form.address.trim();
@@ -765,52 +768,67 @@ export default function CartPanel() {
             </div>
 
             {/* Checkout footer */}
-            <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Subtotal</span><span className="font-semibold">{formatPrice(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Delivery</span><span className="font-semibold">{formatPrice(deliveryFee)}</span>
-                </div>
-                {walletApplied > 0 && (
-                  <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
-                    <span>Wallet discount</span><span className="font-semibold">−{formatPrice(walletApplied)}</span>
-                  </div>
-                )}
-                {selectedSlot && (
+            <div className="border-t border-gray-100 bg-gray-50 px-5 pt-3 pb-4 flex-shrink-0">
+              {/* Collapsible breakdown — tap total row to expand */}
+              <button
+                type="button"
+                onClick={() => setSummaryExpanded((v) => !v)}
+                className="w-full flex items-center justify-between mb-2"
+              >
+                <span className="font-chewy text-lg text-gray-900">
+                  Total: {formatPrice(finalTotal)}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-gray-400 font-[Montserrat]">
+                  {summaryExpanded ? "Hide" : "See breakdown"}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${summaryExpanded ? "rotate-180" : ""}`} />
+                </span>
+              </button>
+
+              {summaryExpanded && (
+                <div className="space-y-1.5 mb-3 pb-3 border-b border-gray-200">
                   <div className="flex justify-between text-sm font-[Montserrat]">
-                    <span className="text-gray-600">Delivery time</span>
-                    <span className="font-semibold text-gray-700">{selectedSlot.label}</span>
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-semibold">{formatPrice(subtotal)}</span>
                   </div>
-                )}
-                <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                  <span className="font-chewy text-lg">Total</span>
-                  <span className="font-chewy text-lg text-[#E8192C]">{formatPrice(finalTotal)}</span>
+                  <div className="flex justify-between text-sm font-[Montserrat]">
+                    <span className="text-gray-500">Delivery</span>
+                    <span className="font-semibold">{formatPrice(deliveryFee)}</span>
+                  </div>
+                  {walletApplied > 0 && (
+                    <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
+                      <span>Wallet discount</span>
+                      <span className="font-semibold">−{formatPrice(walletApplied)}</span>
+                    </div>
+                  )}
+                  {selectedSlot && (
+                    <div className="flex justify-between text-sm font-[Montserrat]">
+                      <span className="text-gray-500">Delivery time</span>
+                      <span className="font-semibold text-gray-700 text-right max-w-[55%]">{selectedSlot.label}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {!canCheckout && (
                 <p className="text-xs text-gray-400 font-[Montserrat] text-center mb-2">
-                  Please fill in Name, Phone, and Address to continue
+                  Fill in Name, Phone &amp; Address to continue
                 </p>
               )}
 
               <button
                 onClick={handlePlaceOrder}
                 disabled={!canCheckout || savingOrder}
-                className={`block w-full text-center font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
+                className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
                   canCheckout && !savingOrder
-                    ? "bg-[#E8192C] hover:bg-[#c8151f] text-white"
+                    ? "bg-[#25D366] hover:bg-[#1ebe5d] text-white"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
-                {savingOrder ? "Placing order…" : "Place Order via WhatsApp"}
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current flex-shrink-0">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                {savingOrder ? "Sending…" : "Order via WhatsApp"}
               </button>
-
-              <p className="text-xs text-gray-400 font-[Montserrat] text-center mt-2">
-                You'll be redirected to WhatsApp to confirm
-              </p>
             </div>
           </>
         )}
