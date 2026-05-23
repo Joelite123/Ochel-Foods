@@ -74,7 +74,7 @@ export default function Footer() {
               </li>
               <li>
                 <p className="text-gray-400">Address</p>
-                <p className="text-white text-xs leading-relaxed">Opposite The Polytechnic, Adedoyin Way, Parakin, Ile Ife</p>
+                <p className="text-white text-xs leading-relaxed">4 Houses After The Poly, Parakin, Ile-Ife, Osun State</p>
               </li>
               <li>
                 <p className="text-gray-400 text-xs mt-1">Payment validates order. Delivery charges apply.</p>

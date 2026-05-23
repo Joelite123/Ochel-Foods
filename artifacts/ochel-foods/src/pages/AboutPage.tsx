@@ -24,13 +24,13 @@ export default function AboutPage() {
             <h2 className="font-chewy text-3xl text-gray-900 mb-1">Find Us</h2>
             <p className="font-[Montserrat] text-gray-500 text-sm flex items-center justify-center gap-1.5">
               <MapPin className="w-4 h-4 text-[#E8192C]" />
-              Opposite The Polytechnic, Adedoyin Way, Parakin, Ile Ife
+              4 Houses After The Poly, Parakin, Ile-Ife, Osun State
             </p>
           </motion.div>
           <div className="rounded-2xl overflow-hidden shadow-lg border border-gray-200">
             <iframe
               title="O'chel Foods Location"
-              src="https://maps.google.com/maps?q=Opposite+The+Polytechnic+Adedoyin+Way+Parakin+Ile+Ife+Osun+Nigeria&output=embed&hl=en&z=15"
+              src="https://maps.google.com/maps?q=4+Houses+After+The+Poly+Parakin+Ile-Ife+Osun+State+Nigeria&output=embed&hl=en&z=16"
               width="100%"
               height="380"
               style={{ border: 0 }}

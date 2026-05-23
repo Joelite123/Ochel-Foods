@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
-  Clock, Info, Wallet, Tag, Check, X,
+  Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -121,6 +121,7 @@ export default function CartPanel() {
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [isPickup, setIsPickup] = useState(false);
   const [zoneSearch, setZoneSearch] = useState("");
   const [zoneOpen, setZoneOpen] = useState(false);
   const zoneDropdownRef = useRef<HTMLDivElement>(null);
@@ -261,6 +262,14 @@ export default function CartPanel() {
   /* ── Totals ── */
   const finalTotal = Math.max(0, total - walletApplied);
 
+  const STORE_ADDRESS = "4 Houses After The Poly, Parakin, Ile-Ife, Osun State";
+
+  /* ── When pickup toggled, zero out delivery fee ── */
+  useEffect(() => {
+    if (isPickup) setDeliveryFee(0);
+    else if (allZones.length) setDeliveryFee(allZones[0].price);
+  }, [isPickup]);
+
   /* ── Build WhatsApp message ── */
   const buildWhatsAppMessage = () => {
     const lines = items.map((item) => {
@@ -273,19 +282,24 @@ export default function CartPanel() {
       return line;
     });
 
+    const fulfillmentLine = isPickup
+      ? `🏪 Order Type: PICK UP at O'chel Foods Storefront\n📍 ${STORE_ADDRESS}\n`
+      : `🚚 Order Type: Delivery\n📍 Delivery Area: ${selectedZone?.label ?? "—"} — ${formatPrice(deliveryFee)}\n`;
+
     return encodeURIComponent(
       `Hello O'chel Foods! I'd like to place an order:\n\n` +
       `${lines.join("\n")}\n\n` +
       `Subtotal: ${formatPrice(subtotal)}\n` +
-      `Delivery (${selectedZone?.label ?? "—"}): ${formatPrice(deliveryFee)}\n` +
+      (isPickup ? "" : `Delivery fee: ${formatPrice(deliveryFee)}\n`) +
       (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
       (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
       `Total: ${formatPrice(finalTotal)}\n\n` +
-      `🕐 Preferred Delivery Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
-      `📍 Delivery Details:\n` +
+      `🕐 ${isPickup ? "Pick Up" : "Delivery"} Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
+      fulfillmentLine + `\n` +
+      `👤 Contact Details:\n` +
       `Name: ${form.name}\n` +
       `Phone: ${form.phone}\n` +
-      `Address: ${form.address}\n` +
+      (!isPickup && form.address ? `Address: ${form.address}\n` : "") +
       (form.instructions ? `Instructions: ${form.instructions}\n` : "") +
       `\nPlease confirm my order. Thank you!`
     );
@@ -316,9 +330,9 @@ export default function CartPanel() {
           customer_name: form.name,
           customer_phone: form.phone,
           customer_email: form.email || null,
-          delivery_address: form.address,
-          delivery_zone_id: form.deliveryZoneId || null,
-          delivery_fee: deliveryFee,
+          delivery_address: isPickup ? `PICK UP: ${STORE_ADDRESS}` : form.address,
+          delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
+          delivery_fee: isPickup ? 0 : deliveryFee,
           subtotal,
           total: finalTotal - promoDiscount,
           discount_amount: walletApplied + promoDiscount,
@@ -394,7 +408,7 @@ export default function CartPanel() {
     setSavingOrder(false);
   };
 
-  const canCheckout = form.name.trim() && form.phone.trim() && form.address.trim();
+  const canCheckout = form.name.trim() && form.phone.trim() && (isPickup || form.address.trim());
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
@@ -605,9 +619,45 @@ export default function CartPanel() {
                 )}
               </div>
 
-              {/* Delivery time */}
+              {/* ── Delivery / Pick Up toggle ── */}
+              <div className="flex rounded-xl overflow-hidden border-2 border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setIsPickup(false)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors ${
+                    !isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  <Bike className="w-4 h-4" /> Delivery
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPickup(true)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors border-l-2 border-gray-200 ${
+                    isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  <Store className="w-4 h-4" /> Pick Up
+                </button>
+              </div>
+
+              {/* Pick Up location banner */}
+              {isPickup && (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                  <MapPin className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold font-[Montserrat] text-green-800">Pick Up at O'chel Foods Storefront</p>
+                    <p className="text-xs font-[Montserrat] text-green-700 mt-0.5">{STORE_ADDRESS}</p>
+                    <p className="text-xs font-[Montserrat] text-green-600 mt-1">No delivery fee — come collect your order!</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Preferred time */}
               <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">Preferred Delivery Time</label>
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                  {isPickup ? "Preferred Pick Up Time" : "Preferred Delivery Time"}
+                </label>
                 {slots.length === 0 ? (
                   <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
                     No slots available right now. Check back during operating hours.
@@ -625,69 +675,68 @@ export default function CartPanel() {
                 <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
                   <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-blue-700 font-[Montserrat]">
-                    Orders are typically prepared within 30 minutes. Time shown includes prep and delivery.
+                    {isPickup
+                      ? "Orders are typically ready within 30 minutes. Please arrive at your chosen time."
+                      : "Orders are typically prepared within 30 minutes. Time shown includes prep and delivery."}
                   </p>
                 </div>
               </div>
 
-              {/* Delivery zone — searchable dropdown */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
-                <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
-                <div className="relative" ref={zoneDropdownRef}>
-                  {/* Trigger button */}
-                  <button
-                    type="button"
-                    onClick={() => { setZoneOpen((o) => !o); setZoneSearch(""); }}
-                    className={`${fieldClass} pr-10 text-left flex items-center justify-between`}
-                  >
-                    <span className={selectedZone ? "text-gray-800" : "text-gray-400"}>
-                      {selectedZone ? `${selectedZone.label} — ${formatPrice(selectedZone.price)}` : "Select delivery area…"}
-                    </span>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${zoneOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {/* Dropdown panel */}
-                  {zoneOpen && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                      {/* Search input */}
-                      <div className="p-2 border-b border-gray-100">
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Search location…"
-                          value={zoneSearch}
-                          onChange={(e) => setZoneSearch(e.target.value)}
-                          className="w-full px-3 py-2 text-sm font-[Montserrat] border border-gray-200 rounded-lg focus:outline-none focus:border-[#E8192C]"
-                        />
+              {/* Delivery zone — only shown for delivery */}
+              {!isPickup && (
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
+                  <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
+                  <div className="relative" ref={zoneDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => { setZoneOpen((o) => !o); setZoneSearch(""); }}
+                      className={`${fieldClass} pr-10 text-left flex items-center justify-between`}
+                    >
+                      <span className={selectedZone ? "text-gray-800" : "text-gray-400"}>
+                        {selectedZone ? `${selectedZone.label} — ${formatPrice(selectedZone.price)}` : "Select delivery area…"}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${zoneOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {zoneOpen && (
+                      <div className="absolute z-50 mt-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                        <div className="p-2 border-b border-gray-100">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search location…"
+                            value={zoneSearch}
+                            onChange={(e) => setZoneSearch(e.target.value)}
+                            className="w-full px-3 py-2 text-sm font-[Montserrat] border border-gray-200 rounded-lg focus:outline-none focus:border-[#E8192C]"
+                          />
+                        </div>
+                        <ul className="max-h-52 overflow-y-auto">
+                          {filteredZones.length === 0 ? (
+                            <li className="px-4 py-3 text-sm text-gray-400 font-[Montserrat]">No locations found</li>
+                          ) : (
+                            filteredZones.map((z) => (
+                              <li key={z.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleZoneChange(z.id, z.price)}
+                                  className={`w-full text-left px-4 py-2.5 text-sm font-[Montserrat] flex items-center justify-between hover:bg-red-50 transition-colors ${form.deliveryZoneId === z.id ? "bg-red-50 text-[#E8192C] font-semibold" : "text-gray-700"}`}
+                                >
+                                  <span>{z.label}</span>
+                                  <span className="font-chewy text-base ml-2 flex-shrink-0">{formatPrice(z.price)}</span>
+                                </button>
+                              </li>
+                            ))
+                          )}
+                        </ul>
                       </div>
-                      {/* Zone list */}
-                      <ul className="max-h-52 overflow-y-auto">
-                        {filteredZones.length === 0 ? (
-                          <li className="px-4 py-3 text-sm text-gray-400 font-[Montserrat]">No locations found</li>
-                        ) : (
-                          filteredZones.map((z) => (
-                            <li key={z.id}>
-                              <button
-                                type="button"
-                                onClick={() => handleZoneChange(z.id, z.price)}
-                                className={`w-full text-left px-4 py-2.5 text-sm font-[Montserrat] flex items-center justify-between hover:bg-red-50 transition-colors ${form.deliveryZoneId === z.id ? "bg-red-50 text-[#E8192C] font-semibold" : "text-gray-700"}`}
-                              >
-                                <span>{z.label}</span>
-                                <span className="font-chewy text-base ml-2 flex-shrink-0">{formatPrice(z.price)}</span>
-                              </button>
-                            </li>
-                          ))
-                        )}
-                      </ul>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                    <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
+                    <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
-                  <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
-                  <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
-                </div>
-              </div>
+              )}
 
               {/* Full Name */}
               <div>
@@ -712,13 +761,15 @@ export default function CartPanel() {
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={fieldClass} />
               </div>
 
-              {/* Address */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">Delivery Address *</label>
-                <textarea placeholder="Enter your full delivery address..." value={form.address}
-                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  className={`${fieldClass} resize-none`} rows={3} />
-              </div>
+              {/* Address — only for delivery */}
+              {!isPickup && (
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">Delivery Address *</label>
+                  <textarea placeholder="Enter your full delivery address..." value={form.address}
+                    onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                    className={`${fieldClass} resize-none`} rows={3} />
+                </div>
+              )}
 
               {/* Special instructions */}
               <div>
