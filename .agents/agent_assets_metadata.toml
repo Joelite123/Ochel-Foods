@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "Wqz3RzrcMo6lZaIuy0U_R"
@@ -48,3 +47,9 @@ id = "KrT_WYSEnFYssJoJDXeMI"
 uri = "file://artifacts/ochel-foods/src/assets/banana-bread.png"
 type = "image"
 title = "banana bread image"
+
+[[outputs]]
+id = "5_wxShu32Uxqbj_hAlrv7"
+uri = "file://print-server/dist/ochel-print-server.tar.gz"
+type = "unspecified"
+title = "O'chel Foods Print Server (PC .exe + config.json)"

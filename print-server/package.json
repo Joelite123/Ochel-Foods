@@ -1,0 +1,22 @@
+{
+  "name": "ochel-print-server",
+  "version": "1.0.0",
+  "description": "O'chel Foods automatic receipt printer for Windows",
+  "main": "src/index.js",
+  "bin": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "build": "pkg . --targets node18-win-x64 --output dist/ochel-print-server.exe --compress GZip"
+  },
+  "pkg": {
+    "assets": [],
+    "targets": ["node18-win-x64"]
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

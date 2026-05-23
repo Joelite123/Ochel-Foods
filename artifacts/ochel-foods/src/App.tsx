@@ -23,6 +23,7 @@ import CombosPage from "@/pages/CombosPage";
 import AboutPage from "@/pages/AboutPage";
 import LoginPage from "@/pages/LoginPage";
 import AccountPage from "@/pages/AccountPage";
+import PrintStation from "@/pages/PrintStation";
 
 // Admin pages
 import AdminLayout from "@/pages/admin/AdminLayout";
@@ -156,6 +157,9 @@ function Router() {
 
       {/* ── Auth pages (no header/footer) ── */}
       <Route path="/login" component={LoginPage} />
+
+      {/* ── Internal tools (no header/footer) ── */}
+      <Route path="/print-station" component={PrintStation} />
 
       {/* ── Public routes ── */}
       <Route path="/">
