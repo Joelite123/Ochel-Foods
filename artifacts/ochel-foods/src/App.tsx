@@ -69,6 +69,14 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
 }
 
 function PublicLayout({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (sessionStorage.getItem("visit_tracked")) return;
+    sessionStorage.setItem("visit_tracked", "1");
+    import("@/lib/supabase").then(({ supabase }) => {
+      supabase.from("site_visits").insert({ page: window.location.pathname }).then(() => {});
+    });
+  }, []);
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
