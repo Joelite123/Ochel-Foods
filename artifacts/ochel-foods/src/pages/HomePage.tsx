@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, ChevronLeft, ChevronRight, Mail } from "lucide-react";
+import { motion } from "framer-motion";
+import { Search, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { comboDealProducts } from "@/data/menuData";
@@ -10,33 +10,12 @@ import ProductCard from "@/components/ui/ProductCard";
 import ComboCard from "@/components/ui/ComboCard";
 import PromoBanner from "@/components/ui/PromoBanner";
 import speckleBg from "@assets/O'Chel_Background_1778493177476.png";
-import pizzaImg from "@/assets/pizza.png";
-import burgerImg from "@/assets/burger.png";
-import shawarmaImg from "@/assets/shawarma.png";
-import fingerFoodsImg from "@/assets/finger-foods.png";
-import pastriesImg from "@/assets/pastries.png";
-import donutsImg from "@/assets/donuts.png";
-import bananaBreadImg from "@/assets/banana-bread.png";
-import heroImg from "@/assets/hero-spread.png";
-
-const slides = [
-  { img: heroImg,        label: "Full Spread",          sub: "Something for everyone" },
-  { img: pizzaImg,       label: "Pizza Combos",         sub: "Choose your slice, your way" },
-  { img: burgerImg,      label: "Burger & Wrap Deals",  sub: "Stack it up, sauce it right" },
-  { img: shawarmaImg,    label: "Shawarma Specials",    sub: "Loaded, fresh, delivered hot" },
-  { img: fingerFoodsImg, label: "Finger Foods & Chops", sub: "Perfect for parties & snacking" },
-  { img: pastriesImg,    label: "Pastries",             sub: "Flaky, golden, freshly made" },
-  { img: donutsImg,      label: "Donuts",               sub: "Sweet treats any time of day" },
-  { img: bananaBreadImg, label: "Baked Goodies",        sub: "Wholesome bakes, bold flavors" },
-];
 
 export default function HomePage() {
   const COMBO_TAB_ID = "featured-combos";
 
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState(COMBO_TAB_ID);
-  const [slide, setSlide] = useState(0);
-  const [direction, setDirection] = useState(1);
   const [searchOpen, setSearchOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -60,11 +39,6 @@ export default function HomePage() {
       )
     : null;
 
-  const goTo = (idx: number, dir: number) => {
-    setDirection(dir);
-    setSlide((idx + slides.length) % slides.length);
-  };
-
   const scrollToSection = (id: string) => {
     setActiveTab(id);
     const el = sectionRefs.current[id];
@@ -74,14 +48,6 @@ export default function HomePage() {
       window.scrollTo({ top, behavior: "smooth" });
     }
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setDirection(1);
-      setSlide((s) => (s + 1) % slides.length);
-    }, 3500);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -105,12 +71,6 @@ export default function HomePage() {
       searchInputRef.current.focus();
     }
   }, [searchOpen]);
-
-  const variants = {
-    enter: (dir: number) => ({ x: dir > 0 ? "100%" : "-100%", opacity: 0 }),
-    center: { x: 0, opacity: 1 },
-    exit: (dir: number) => ({ x: dir > 0 ? "-100%" : "100%", opacity: 0 }),
-  };
 
   return (
     <div className="min-h-screen">
@@ -149,77 +109,6 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-        </div>
-      </div>
-
-      {/* ── FLASHCARD CAROUSEL ──────────────────────────────────── */}
-      <div className="relative w-full overflow-hidden bg-black" style={{ height: "clamp(220px, 45vw, 520px)" }}>
-        <AnimatePresence initial={false} custom={direction} mode="popLayout">
-          <motion.div
-            key={slide}
-            custom={direction}
-            variants={variants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.45, ease: "easeInOut" }}
-            className="absolute inset-0"
-          >
-            <img
-              src={slides[slide].img}
-              alt={slides[slide].label}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 p-5 md:p-8">
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="font-chewy text-2xl md:text-4xl text-white leading-tight"
-              >
-                {slides[slide].label}
-              </motion.p>
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="font-[Montserrat] text-white/80 text-sm md:text-base mt-1"
-              >
-                {slides[slide].sub}
-              </motion.p>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Prev / Next arrows */}
-        <button
-          onClick={() => goTo(slide - 1, -1)}
-          className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full w-9 h-9 flex items-center justify-center transition-colors"
-          aria-label="Previous"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <button
-          onClick={() => goTo(slide + 1, 1)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/60 text-white rounded-full w-9 h-9 flex items-center justify-center transition-colors"
-          aria-label="Next"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-
-        {/* Dot indicators */}
-        <div className="absolute bottom-3 right-4 flex gap-1.5">
-          {slides.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i, i > slide ? 1 : -1)}
-              className={`rounded-full transition-all ${
-                i === slide ? "bg-white w-5 h-2" : "bg-white/50 w-2 h-2"
-              }`}
-              aria-label={`Slide ${i + 1}`}
-            />
-          ))}
         </div>
       </div>
 
