@@ -24,12 +24,12 @@ export default function ProductCard({ product }: ProductCardProps) {
         data-testid={`card-product-${product.id}`}
         onClick={() => setModalOpen(true)}
       >
-        <div className="relative overflow-hidden bg-gray-50 aspect-[4/3]">
+        <div className="relative overflow-hidden bg-white aspect-[4/3]">
           {product.imageUrl ? (
             <img
               src={product.imageUrl}
               alt={product.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-50 to-yellow-50">

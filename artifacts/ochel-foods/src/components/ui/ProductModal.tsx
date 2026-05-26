@@ -97,7 +97,7 @@ export default function ProductModal({ product, open, onClose }: ProductModalPro
         <div className="relative flex-shrink-0">
           <div className="aspect-[16/9] bg-gray-100 overflow-hidden">
             {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+              <img src={product.imageUrl} alt={product.name} className="w-full h-full object-contain" />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-50 to-yellow-50">
                 <span className="text-6xl">🍽️</span>
