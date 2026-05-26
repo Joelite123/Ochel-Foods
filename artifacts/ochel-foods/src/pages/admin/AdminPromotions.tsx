@@ -1,36 +1,51 @@
 import { useEffect, useState, useRef } from "react";
-import { Plus, Pencil, Trash2, X, Upload, Tag, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Upload, Tag, ToggleLeft, ToggleRight, Gift, Search } from "lucide-react";
 import { supabase, DBPromotion } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
+
+type SimpleProduct = { id: string; name: string; base_price: number; category_id: string };
 
 const EMPTY: Partial<DBPromotion> = {
   title: "", description: "", code: "", discount_type: "percentage",
   discount_value: 0, min_order_amount: null, max_uses: null,
   banner_url: "", is_active: true, starts_at: null, ends_at: null,
+  free_product_id: null, free_product_name: null,
 };
 
 export default function AdminPromotions() {
   const [promos, setPromos] = useState<DBPromotion[]>([]);
+  const [products, setProducts] = useState<SimpleProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DBPromotion | null>(null);
   const [form, setForm] = useState<Partial<DBPromotion>>(EMPTY);
+  const [productSearch, setProductSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from("promotions").select("*").order("created_at", { ascending: false });
-    if (data) setPromos(data as DBPromotion[]);
+    const [{ data: promoData }, { data: prodData }] = await Promise.all([
+      supabase.from("promotions").select("*").order("created_at", { ascending: false }),
+      supabase.from("products").select("id, name, base_price, category_id").order("name"),
+    ]);
+    if (promoData) setPromos(promoData as DBPromotion[]);
+    if (prodData) setProducts(prodData as SimpleProduct[]);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm(EMPTY); setShowForm(true); };
-  const openEdit = (p: DBPromotion) => { setEditing(p); setForm({ ...p }); setShowForm(true); };
+  const openAdd = () => {
+    setEditing(null); setForm(EMPTY); setProductSearch(""); setShowForm(true);
+  };
+  const openEdit = (p: DBPromotion) => {
+    setEditing(p); setForm({ ...p });
+    setProductSearch(p.free_product_name || "");
+    setShowForm(true);
+  };
 
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,14 +60,24 @@ export default function AdminPromotions() {
     toast.success("Banner uploaded");
   };
 
+  const selectFreeProduct = (p: SimpleProduct) => {
+    setForm((f) => ({ ...f, free_product_id: p.id, free_product_name: p.name, discount_value: 0 }));
+    setProductSearch(p.name);
+  };
+
   const handleSave = async () => {
     if (!form.title) return toast.error("Title is required");
+    if (form.discount_type === "free_product" && !form.free_product_id) {
+      return toast.error("Please select a free product");
+    }
     setSaving(true);
-    const payload = {
+    const payload: Partial<DBPromotion> = {
       ...form,
-      discount_value: Number(form.discount_value),
+      discount_value: form.discount_type === "free_product" ? 0 : Number(form.discount_value),
       min_order_amount: form.min_order_amount ? Number(form.min_order_amount) : null,
       max_uses: form.max_uses ? Number(form.max_uses) : null,
+      free_product_id: form.discount_type === "free_product" ? (form.free_product_id ?? null) : null,
+      free_product_name: form.discount_type === "free_product" ? (form.free_product_name ?? null) : null,
     };
     let error;
     if (editing) {
@@ -80,6 +105,16 @@ export default function AdminPromotions() {
     toast.success(p.is_active ? "Promotion paused" : "Promotion activated");
     load();
   };
+
+  const discountLabel = (p: DBPromotion) => {
+    if (p.discount_type === "free_product") return `Free: ${p.free_product_name ?? "product"}`;
+    if (p.discount_type === "percentage") return `${p.discount_value}% off`;
+    return `${formatPrice(Number(p.discount_value))} off`;
+  };
+
+  const filteredProducts = products.filter((p) =>
+    p.name.toLowerCase().includes(productSearch.toLowerCase())
+  );
 
   const field = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none";
   const now = new Date();
@@ -126,8 +161,9 @@ export default function AdminPromotions() {
                         <Tag className="w-3 h-3" /> {p.code}
                       </span>
                     )}
-                    <span className="text-gray-500">
-                      {p.discount_type === "percentage" ? `${p.discount_value}% off` : formatPrice(Number(p.discount_value)) + " off"}
+                    <span className={`flex items-center gap-1 text-gray-500 ${p.discount_type === "free_product" ? "text-green-600 font-semibold" : ""}`}>
+                      {p.discount_type === "free_product" && <Gift className="w-3.5 h-3.5" />}
+                      {discountLabel(p)}
                     </span>
                     {p.min_order_amount && <span className="text-gray-400 text-xs">Min order: {formatPrice(Number(p.min_order_amount))}</span>}
                     {p.max_uses && <span className="text-gray-400 text-xs">{p.uses_count}/{p.max_uses} uses</span>}
@@ -191,7 +227,7 @@ export default function AdminPromotions() {
               <div>
                 <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">Title *</label>
                 <input value={form.title || ""} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  className={field} placeholder="e.g. Weekend Special — 20% off all pizzas" />
+                  className={field} placeholder="e.g. Buy 2 Pizzas, Get a Free Drink" />
               </div>
               <div>
                 <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">Description</label>
@@ -203,24 +239,92 @@ export default function AdminPromotions() {
                   Promo Code <span className="font-normal text-gray-400">(leave blank for automatic discount)</span>
                 </label>
                 <input value={form.code || ""} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-                  className={field} placeholder="e.g. WEEKEND20" />
+                  className={field} placeholder="e.g. FREEITEM" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">Discount Type</label>
-                  <select value={form.discount_type} onChange={(e) => setForm((f) => ({ ...f, discount_type: e.target.value as "percentage" | "fixed" }))} className={field}>
-                    <option value="percentage">Percentage (%)</option>
-                    <option value="fixed">Fixed Amount (₦)</option>
-                  </select>
-                </div>
+
+              {/* Discount type */}
+              <div>
+                <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">Discount Type</label>
+                <select
+                  value={form.discount_type}
+                  onChange={(e) => {
+                    const t = e.target.value as DBPromotion["discount_type"];
+                    setForm((f) => ({
+                      ...f,
+                      discount_type: t,
+                      free_product_id: t !== "free_product" ? null : f.free_product_id,
+                      free_product_name: t !== "free_product" ? null : f.free_product_name,
+                    }));
+                    if (e.target.value !== "free_product") setProductSearch("");
+                  }}
+                  className={field}
+                >
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="fixed">Fixed Amount (₦)</option>
+                  <option value="free_product">Free Product 🎁</option>
+                </select>
+              </div>
+
+              {/* Conditional: discount value OR product picker */}
+              {form.discount_type !== "free_product" ? (
                 <div>
                   <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">
                     Value {form.discount_type === "percentage" ? "(%)" : "(₦)"}
                   </label>
-                  <input type="number" value={form.discount_value || ""} onChange={(e) => setForm((f) => ({ ...f, discount_value: Number(e.target.value) }))}
+                  <input type="number" value={form.discount_value || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, discount_value: Number(e.target.value) }))}
                     className={field} placeholder={form.discount_type === "percentage" ? "20" : "1000"} />
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">
+                    Free Product *
+                    {form.free_product_name && (
+                      <span className="ml-2 text-green-600 font-normal">✓ {form.free_product_name}</span>
+                    )}
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      value={productSearch}
+                      onChange={(e) => {
+                        setProductSearch(e.target.value);
+                        if (e.target.value === "") setForm((f) => ({ ...f, free_product_id: null, free_product_name: null }));
+                      }}
+                      className={`${field} pl-9`}
+                      placeholder="Search product name…"
+                    />
+                  </div>
+                  {productSearch && filteredProducts.length > 0 && !form.free_product_id && (
+                    <div className="mt-1 border-2 border-gray-100 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                      {filteredProducts.slice(0, 10).map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => selectFreeProduct(p)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-red-50 font-[Montserrat] text-sm flex justify-between items-center border-b border-gray-50 last:border-0"
+                        >
+                          <span className="text-gray-800 font-medium">{p.name}</span>
+                          <span className="text-gray-400 text-xs ml-2 flex-shrink-0">{formatPrice(p.base_price)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {productSearch && filteredProducts.length === 0 && (
+                    <p className="text-sm text-gray-400 font-[Montserrat] mt-1 px-1">No products found</p>
+                  )}
+                  {form.free_product_id && (
+                    <button
+                      type="button"
+                      onClick={() => { setForm((f) => ({ ...f, free_product_id: null, free_product_name: null })); setProductSearch(""); }}
+                      className="mt-1.5 text-xs text-gray-400 hover:text-red-500 font-[Montserrat] flex items-center gap-1"
+                    >
+                      <X className="w-3 h-3" /> Clear selection
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">Min Order (₦)</label>

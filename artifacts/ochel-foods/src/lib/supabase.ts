@@ -240,7 +240,7 @@ export type DBPromotion = {
   title: string;
   description: string | null;
   code: string | null;
-  discount_type: "percentage" | "fixed";
+  discount_type: "percentage" | "fixed" | "free_product";
   discount_value: number;
   min_order_amount: number | null;
   max_uses: number | null;
@@ -250,6 +250,8 @@ export type DBPromotion = {
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
+  free_product_id: string | null;
+  free_product_name: string | null;
 };
 
 export type DBNewsletterSubscriber = {
