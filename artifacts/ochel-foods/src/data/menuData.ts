@@ -8,14 +8,14 @@ import bananaBreadImg from "@/assets/banana-bread.png";
 
 // Real food photos (background removed)
 import pizzettaImg from "@/assets/pizzetta.png";
-import chickenSautePizzaImg from "@/assets/chicken-saute-pizza.png";
-import beefPizzaImg from "@/assets/beef-pizza.png";
-import suyaPizzaImg from "@/assets/suya-pizza.png";
-import cheeseburgerImg from "@/assets/cheeseburger-real.png";
-import shawarmaRealImg from "@/assets/shawarma-real.png";
-import chickenAndChipsImg from "@/assets/chicken-and-chips.png";
+import chickenSautePizzaImg from "@/assets/chicken-saute-pizza-real.jpg";
+import beefPizzaImg from "@/assets/beef-pizza-real.jpg";
+import suyaPizzaImg from "@/assets/suya-pizza-real.jpg";
+import cheeseburgerImg from "@/assets/cheeseburger-real2.jpg";
+import shawarmaRealImg from "@/assets/shawarma-real2.jpg";
+import chickenAndChipsImg from "@/assets/chicken-and-chips-real.jpg";
 import tigernuttImg from "@/assets/tigernut-drink.png";
-import smallChopsImg from "@/assets/small-chops.png";
+import smallChopsImg from "@/assets/small-chops-real.jpg";
 
 export type ProductSize = {
   label: string;

@@ -11,7 +11,7 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const [modalOpen, setModalOpen] = useState(false);
 
-  const displayPrice = product.sizes
+  const displayPrice = product.sizes && product.sizes.length > 0
     ? `From ${formatPrice(product.sizes[0].price)}`
     : formatPrice(product.basePrice);
 
