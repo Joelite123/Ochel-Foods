@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Plus, Pencil, Trash2, X, Upload, Tag, ToggleLeft, ToggleRight, Gift, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Upload, Tag, ToggleLeft, ToggleRight, Gift, Search, Package } from "lucide-react";
 import { supabase, DBPromotion } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ const EMPTY: Partial<DBPromotion> = {
   title: "", description: "", code: "", discount_type: "percentage",
   discount_value: 0, min_order_amount: null, max_uses: null,
   banner_url: "", is_active: true, starts_at: null, ends_at: null,
-  free_product_id: null, free_product_name: null,
+  free_product_id: null, free_product_name: null, applicable_product_ids: null,
 };
 
 export default function AdminPromotions() {
@@ -20,7 +20,14 @@ export default function AdminPromotions() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<DBPromotion | null>(null);
   const [form, setForm] = useState<Partial<DBPromotion>>(EMPTY);
+
+  // Free product picker state
   const [productSearch, setProductSearch] = useState("");
+
+  // Applicable products state
+  const [restrictProducts, setRestrictProducts] = useState(false);
+  const [applicableSearch, setApplicableSearch] = useState("");
+
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -39,11 +46,21 @@ export default function AdminPromotions() {
   useEffect(() => { load(); }, []);
 
   const openAdd = () => {
-    setEditing(null); setForm(EMPTY); setProductSearch(""); setShowForm(true);
+    setEditing(null);
+    setForm(EMPTY);
+    setProductSearch("");
+    setRestrictProducts(false);
+    setApplicableSearch("");
+    setShowForm(true);
   };
+
   const openEdit = (p: DBPromotion) => {
-    setEditing(p); setForm({ ...p });
+    setEditing(p);
+    setForm({ ...p });
     setProductSearch(p.free_product_name || "");
+    const hasRestrictions = Array.isArray(p.applicable_product_ids) && p.applicable_product_ids.length > 0;
+    setRestrictProducts(hasRestrictions);
+    setApplicableSearch("");
     setShowForm(true);
   };
 
@@ -65,6 +82,14 @@ export default function AdminPromotions() {
     setProductSearch(p.name);
   };
 
+  const toggleApplicableProduct = (id: string) => {
+    setForm((f) => {
+      const current = f.applicable_product_ids ?? [];
+      const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+      return { ...f, applicable_product_ids: next.length > 0 ? next : null };
+    });
+  };
+
   const handleSave = async () => {
     if (!form.title) return toast.error("Title is required");
     if (form.discount_type === "free_product" && !form.free_product_id) {
@@ -78,6 +103,9 @@ export default function AdminPromotions() {
       max_uses: form.max_uses ? Number(form.max_uses) : null,
       free_product_id: form.discount_type === "free_product" ? (form.free_product_id ?? null) : null,
       free_product_name: form.discount_type === "free_product" ? (form.free_product_name ?? null) : null,
+      applicable_product_ids: restrictProducts && (form.applicable_product_ids?.length ?? 0) > 0
+        ? form.applicable_product_ids
+        : null,
     };
     let error;
     if (editing) {
@@ -112,9 +140,19 @@ export default function AdminPromotions() {
     return `${formatPrice(Number(p.discount_value))} off`;
   };
 
-  const filteredProducts = products.filter((p) =>
+  const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+
+  const filteredFreeProducts = products.filter((p) =>
     p.name.toLowerCase().includes(productSearch.toLowerCase())
   );
+
+  const filteredApplicable = products.filter((p) =>
+    p.name.toLowerCase().includes(applicableSearch.toLowerCase())
+  );
+
+  const selectedApplicable = (form.applicable_product_ids ?? [])
+    .map((id) => productMap[id])
+    .filter(Boolean);
 
   const field = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none";
   const now = new Date();
@@ -145,6 +183,7 @@ export default function AdminPromotions() {
           const isLive = p.is_active &&
             (!p.starts_at || new Date(p.starts_at) <= now) &&
             (!p.ends_at || new Date(p.ends_at) >= now);
+          const restrictedCount = p.applicable_product_ids?.length ?? 0;
           return (
             <div key={p.id} className={`bg-white rounded-2xl border overflow-hidden ${isLive ? "border-green-200" : "border-gray-100"}`}>
               {p.banner_url && <img src={p.banner_url} alt={p.title} className="w-full h-28 object-cover" />}
@@ -161,13 +200,24 @@ export default function AdminPromotions() {
                         <Tag className="w-3 h-3" /> {p.code}
                       </span>
                     )}
-                    <span className={`flex items-center gap-1 text-gray-500 ${p.discount_type === "free_product" ? "text-green-600 font-semibold" : ""}`}>
+                    <span className={`flex items-center gap-1 ${p.discount_type === "free_product" ? "text-green-600 font-semibold" : "text-gray-500"}`}>
                       {p.discount_type === "free_product" && <Gift className="w-3.5 h-3.5" />}
                       {discountLabel(p)}
                     </span>
+                    {restrictedCount > 0 && (
+                      <span className="flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full font-[Montserrat]">
+                        <Package className="w-3 h-3" />
+                        {restrictedCount} product{restrictedCount !== 1 ? "s" : ""} only
+                      </span>
+                    )}
                     {p.min_order_amount && <span className="text-gray-400 text-xs">Min order: {formatPrice(Number(p.min_order_amount))}</span>}
                     {p.max_uses && <span className="text-gray-400 text-xs">{p.uses_count}/{p.max_uses} uses</span>}
                   </div>
+                  {restrictedCount > 0 && (
+                    <p className="text-xs text-gray-400 font-[Montserrat] mt-0.5 truncate">
+                      {(p.applicable_product_ids ?? []).map((id) => productMap[id]?.name).filter(Boolean).join(", ")}
+                    </p>
+                  )}
                   {(p.starts_at || p.ends_at) && (
                     <p className="text-xs text-gray-400 font-[Montserrat] mt-0.5">
                       {p.starts_at && `From ${new Date(p.starts_at).toLocaleDateString("en-GB")}`}
@@ -202,6 +252,7 @@ export default function AdminPromotions() {
               <button onClick={() => setShowForm(false)}><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+
               {/* Banner upload */}
               <div>
                 <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">
@@ -265,7 +316,7 @@ export default function AdminPromotions() {
                 </select>
               </div>
 
-              {/* Conditional: discount value OR product picker */}
+              {/* Discount value OR free product picker */}
               {form.discount_type !== "free_product" ? (
                 <div>
                   <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">
@@ -295,35 +346,108 @@ export default function AdminPromotions() {
                       placeholder="Search product name…"
                     />
                   </div>
-                  {productSearch && filteredProducts.length > 0 && !form.free_product_id && (
-                    <div className="mt-1 border-2 border-gray-100 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                      {filteredProducts.slice(0, 10).map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => selectFreeProduct(p)}
-                          className="w-full text-left px-4 py-2.5 hover:bg-red-50 font-[Montserrat] text-sm flex justify-between items-center border-b border-gray-50 last:border-0"
-                        >
+                  {productSearch && filteredFreeProducts.length > 0 && !form.free_product_id && (
+                    <div className="mt-1 border-2 border-gray-100 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                      {filteredFreeProducts.slice(0, 10).map((p) => (
+                        <button key={p.id} type="button" onClick={() => selectFreeProduct(p)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-red-50 font-[Montserrat] text-sm flex justify-between items-center border-b border-gray-50 last:border-0">
                           <span className="text-gray-800 font-medium">{p.name}</span>
                           <span className="text-gray-400 text-xs ml-2 flex-shrink-0">{formatPrice(p.base_price)}</span>
                         </button>
                       ))}
                     </div>
                   )}
-                  {productSearch && filteredProducts.length === 0 && (
+                  {productSearch && filteredFreeProducts.length === 0 && (
                     <p className="text-sm text-gray-400 font-[Montserrat] mt-1 px-1">No products found</p>
                   )}
                   {form.free_product_id && (
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => { setForm((f) => ({ ...f, free_product_id: null, free_product_name: null })); setProductSearch(""); }}
-                      className="mt-1.5 text-xs text-gray-400 hover:text-red-500 font-[Montserrat] flex items-center gap-1"
-                    >
+                      className="mt-1.5 text-xs text-gray-400 hover:text-red-500 font-[Montserrat] flex items-center gap-1">
                       <X className="w-3 h-3" /> Clear selection
                     </button>
                   )}
                 </div>
               )}
+
+              {/* Applies To */}
+              <div className="border-2 border-gray-100 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold font-[Montserrat] text-gray-700">Applies To</p>
+                    <p className="text-xs text-gray-400 font-[Montserrat]">Restrict this discount to specific products</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRestrictProducts((v) => {
+                        if (v) setForm((f) => ({ ...f, applicable_product_ids: null }));
+                        return !v;
+                      });
+                      setApplicableSearch("");
+                    }}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer ${restrictProducts ? "bg-[#E8192C]" : "bg-gray-200"}`}
+                  >
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${restrictProducts ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+
+                {!restrictProducts ? (
+                  <p className="text-sm text-gray-400 font-[Montserrat] italic">All products</p>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Selected chips */}
+                    {selectedApplicable.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedApplicable.map((p) => (
+                          <span key={p.id}
+                            className="flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-[Montserrat] font-medium px-2 py-1 rounded-full">
+                            {p.name}
+                            <button type="button" onClick={() => toggleApplicableProduct(p.id)}
+                              className="hover:text-red-500 ml-0.5">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Search */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        value={applicableSearch}
+                        onChange={(e) => setApplicableSearch(e.target.value)}
+                        className={`${field} pl-9`}
+                        placeholder="Search products to add…"
+                      />
+                    </div>
+
+                    {/* Product list */}
+                    <div className="border border-gray-100 rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                      {filteredApplicable.length === 0 ? (
+                        <p className="text-sm text-gray-400 font-[Montserrat] p-3 text-center">No products found</p>
+                      ) : filteredApplicable.map((p) => {
+                        const selected = (form.applicable_product_ids ?? []).includes(p.id);
+                        return (
+                          <button key={p.id} type="button" onClick={() => toggleApplicableProduct(p.id)}
+                            className={`w-full text-left px-4 py-2.5 font-[Montserrat] text-sm flex items-center gap-3 border-b border-gray-50 last:border-0 transition-colors ${selected ? "bg-purple-50" : "hover:bg-gray-50"}`}>
+                            <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${selected ? "bg-purple-600 border-purple-600" : "border-gray-300"}`}>
+                              {selected && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </span>
+                            <span className="flex-1 text-gray-800 font-medium">{p.name}</span>
+                            <span className="text-gray-400 text-xs flex-shrink-0">{formatPrice(p.base_price)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {selectedApplicable.length === 0 && (
+                      <p className="text-xs text-amber-600 font-[Montserrat]">⚠ Select at least one product, or turn off the restriction.</p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

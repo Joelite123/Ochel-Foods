@@ -252,6 +252,7 @@ export type DBPromotion = {
   created_at: string;
   free_product_id: string | null;
   free_product_name: string | null;
+  applicable_product_ids: string[] | null;
 };
 
 export type DBNewsletterSubscriber = {
