@@ -98,7 +98,7 @@ export default function AdminCustomers() {
   });
 
   const statusLabel: Record<string, string> = {
-    pending: "Pending", confirmed: "Confirmed", preparing: "Preparing",
+    unpaid: "Unpaid", confirmed: "Confirmed", preparing: "Preparing",
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 

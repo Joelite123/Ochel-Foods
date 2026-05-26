@@ -338,7 +338,9 @@ export default function CartPanel() {
           discount_amount: walletApplied + promoDiscount,
           referral_wallet_used: walletApplied,
           promo_code: null,
-          status: "pending",
+          // TODO: If Paystack (or another payment gateway) is added, set status to
+          // "confirmed" here once payment is verified, instead of "unpaid".
+          status: "unpaid",
           delivery_time: selectedSlot?.label ?? null,
           special_instructions: form.instructions || null,
           referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,

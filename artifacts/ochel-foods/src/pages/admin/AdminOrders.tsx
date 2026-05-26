@@ -5,7 +5,7 @@ import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
 
 const STATUSES = [
-  { value: "pending",          label: "Pending",          color: "bg-yellow-100 text-yellow-700" },
+  { value: "unpaid",           label: "Unpaid",           color: "bg-yellow-100 text-yellow-700" },
   { value: "confirmed",        label: "Confirmed",        color: "bg-blue-100 text-blue-700" },
   { value: "preparing",        label: "Preparing",        color: "bg-orange-100 text-orange-700" },
   { value: "out_for_delivery", label: "Out for Delivery", color: "bg-purple-100 text-purple-700" },

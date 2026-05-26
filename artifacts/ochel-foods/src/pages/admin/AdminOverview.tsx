@@ -42,7 +42,7 @@ export default function AdminOverview() {
 
       // Stats
       const todayOrders = orders.filter((o) => new Date(o.created_at) >= todayStart);
-      const pendingOrders = orders.filter((o) => ["pending", "confirmed", "preparing", "out_for_delivery"].includes(o.status));
+      const pendingOrders = orders.filter((o) => ["unpaid", "confirmed", "preparing", "out_for_delivery"].includes(o.status));
 
       setStats({
         todayOrders: todayOrders.length,
@@ -83,7 +83,7 @@ export default function AdminOverview() {
   }, []);
 
   const statusColor: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-700",
+    unpaid: "bg-yellow-100 text-yellow-700",
     confirmed: "bg-blue-100 text-blue-700",
     preparing: "bg-orange-100 text-orange-700",
     out_for_delivery: "bg-purple-100 text-purple-700",
@@ -91,7 +91,7 @@ export default function AdminOverview() {
     cancelled: "bg-gray-100 text-gray-500",
   };
   const statusLabel: Record<string, string> = {
-    pending: "Pending", confirmed: "Confirmed", preparing: "Preparing",
+    unpaid: "Unpaid", confirmed: "Confirmed", preparing: "Preparing",
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 

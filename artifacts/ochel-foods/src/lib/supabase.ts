@@ -139,7 +139,10 @@ export type DBOrder = {
   discount_amount: number;
   referral_wallet_used: number;
   promo_code: string | null;
-  status: "pending" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
+  // TODO: If Paystack (or another payment gateway) is integrated in the future,
+  // the webhook/callback for a successful payment should automatically set status to
+  // "confirmed" instead of "unpaid" — no manual admin action needed for paid orders.
+  status: "unpaid" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_time: string | null;
   special_instructions: string | null;
   referral_code_used: string | null;

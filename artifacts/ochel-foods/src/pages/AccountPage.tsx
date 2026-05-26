@@ -62,7 +62,7 @@ export default function AccountPage() {
   };
 
   const statusColor: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-700",
+    unpaid: "bg-yellow-100 text-yellow-700",
     confirmed: "bg-blue-100 text-blue-700",
     preparing: "bg-orange-100 text-orange-700",
     out_for_delivery: "bg-purple-100 text-purple-700",
@@ -70,7 +70,7 @@ export default function AccountPage() {
     cancelled: "bg-gray-100 text-gray-500",
   };
   const statusLabel: Record<string, string> = {
-    pending: "Pending",
+    unpaid: "Unpaid",
     confirmed: "Confirmed",
     preparing: "Preparing",
     out_for_delivery: "Out for Delivery",

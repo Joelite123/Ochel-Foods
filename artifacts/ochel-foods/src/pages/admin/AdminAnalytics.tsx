@@ -94,7 +94,7 @@ export default function AdminAnalytics() {
   const PIE_COLORS = ["#FFB800", "#3B82F6", "#F97316", "#8B5CF6", "#22C55E", "#6B7280"];
 
   const statusLabel: Record<string, string> = {
-    pending: "Pending", confirmed: "Confirmed", preparing: "Preparing",
+    unpaid: "Unpaid", confirmed: "Confirmed", preparing: "Preparing",
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 
