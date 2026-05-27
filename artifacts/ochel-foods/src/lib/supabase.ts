@@ -82,6 +82,11 @@ export type Database = {
         Insert: Partial<DBNewsletterSubscriber>;
         Update: Partial<DBNewsletterSubscriber>;
       };
+      combos: {
+        Row: DBCombo;
+        Insert: Partial<DBCombo>;
+        Update: Partial<DBCombo>;
+      };
     };
   };
 };
@@ -93,6 +98,8 @@ export type Profile = {
   phone: string | null;
   role: "customer" | "admin";
   referral_wallet_balance: number;
+  default_address: string | null;
+  default_delivery_zone_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -256,6 +263,20 @@ export type DBPromotion = {
   free_product_id: string | null;
   free_product_name: string | null;
   applicable_product_ids: string[] | null;
+};
+
+export type DBCombo = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string;
+  combo_price: number;
+  original_price: number;
+  includes: string[];
+  tag: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
 };
 
 export type DBNewsletterSubscriber = {

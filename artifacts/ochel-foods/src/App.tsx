@@ -29,6 +29,7 @@ import PrintStation from "@/pages/PrintStation";
 import AdminLayout from "@/pages/admin/AdminLayout";
 import AdminOverview from "@/pages/admin/AdminOverview";
 import AdminProducts from "@/pages/admin/AdminProducts";
+import AdminCombos from "@/pages/admin/AdminCombos";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminCustomers from "@/pages/admin/AdminCustomers";
 import AdminReferrals from "@/pages/admin/AdminReferrals";
@@ -103,6 +104,13 @@ function Router() {
         {() => (
           <AdminGuard>
             <AdminLayout><AdminProducts /></AdminLayout>
+          </AdminGuard>
+        )}
+      </Route>
+      <Route path="/admin/combos">
+        {() => (
+          <AdminGuard>
+            <AdminLayout><AdminCombos /></AdminLayout>
           </AdminGuard>
         )}
       </Route>

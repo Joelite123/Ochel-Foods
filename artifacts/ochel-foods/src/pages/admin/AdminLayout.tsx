@@ -2,7 +2,7 @@ import { useState, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Gift,
-  MapPin, Tag, Clock, Mail, BarChart2, Menu, X, LogOut, ChevronRight,
+  MapPin, Tag, Clock, Mail, BarChart2, Menu, X, LogOut, ChevronRight, Layers,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
@@ -10,6 +10,7 @@ import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 const navItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard, tip: "Sales & order summary" },
   { href: "/admin/products", label: "Products", icon: Package, tip: "Add, edit, remove menu items" },
+  { href: "/admin/combos", label: "Special Offers", icon: Layers, tip: "Manage combo deals & bundle offers" },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag, tip: "View & update order status" },
   { href: "/admin/customers", label: "Customers", icon: Users, tip: "Customer list & details" },
   { href: "/admin/referrals", label: "Referrals & Loyalty", icon: Gift, tip: "Manage rewards & referrals" },

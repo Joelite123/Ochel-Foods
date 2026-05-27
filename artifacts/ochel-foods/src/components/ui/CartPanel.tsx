@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import type { DBPromotion } from "@/lib/supabase";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
-  Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store,
+  Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store, Ticket,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -112,6 +113,10 @@ export default function CartPanel() {
   const { user, profile } = useAuth();
   const { walletBalance, walletApplied, setWalletApplied, refresh: refreshRewards } = useRewards();
 
+  /* keep a ref to profile so zone-sync effect can read it without re-running */
+  const profileRef = useRef(profile);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
+
   // Load dynamic data from Supabase
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneDB[]>([]);
   const [openHours, setOpenHours] = useState<Record<number, number>>(OPEN_HOUR_FALLBACK);
@@ -125,6 +130,15 @@ export default function CartPanel() {
   const [zoneSearch, setZoneSearch] = useState("");
   const [zoneOpen, setZoneOpen] = useState(false);
   const zoneDropdownRef = useRef<HTMLDivElement>(null);
+
+  /* ── Promo code state ── */
+  const [activePromos, setActivePromos] = useState<DBPromotion[]>([]);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState<DBPromotion | null>(null);
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoValidating, setPromoValidating] = useState(false);
+  const [promoMsg, setPromoMsg] = useState("");
+  const [promoMsgValid, setPromoMsgValid] = useState<boolean | null>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -166,6 +180,25 @@ export default function CartPanel() {
       });
   }, []);
 
+  /* Fetch active promos once on mount */
+  useEffect(() => {
+    supabase
+      .from("promotions")
+      .select("*")
+      .eq("is_active", true)
+      .then(({ data }) => {
+        if (data) {
+          const now = new Date();
+          const valid = (data as DBPromotion[]).filter(p => {
+            if (p.starts_at && new Date(p.starts_at) > now) return false;
+            if (p.ends_at && new Date(p.ends_at) < now) return false;
+            return true;
+          });
+          setActivePromos(valid);
+        }
+      });
+  }, []);
+
   const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
   const hoursStatus = useMemo(() => getHoursStatus(openHours, closeHour), [openHours, closeHour]);
 
@@ -180,7 +213,7 @@ export default function CartPanel() {
     referralCode: "",
   });
 
-  // Pre-fill user info when profile loads
+  /* Pre-fill user info (including saved address) when profile loads */
   useEffect(() => {
     if (profile) {
       setForm((f) => ({
@@ -188,14 +221,19 @@ export default function CartPanel() {
         name: f.name || profile.full_name || "",
         phone: f.phone || profile.phone || "",
         email: f.email || profile.email || "",
+        address: f.address || profile.default_address || "",
       }));
     }
   }, [profile]);
 
-  // Sync delivery zone to first zone
+  /* Sync delivery zone to saved zone or first zone */
   useEffect(() => {
     if (deliveryZones.length && !form.deliveryZoneId) {
-      setForm((f) => ({ ...f, deliveryZoneId: deliveryZones[0].id }));
+      const savedId = (profileRef.current as any)?.default_delivery_zone_id;
+      const savedZone = savedId ? deliveryZones.find(z => z.id === savedId) : null;
+      const target = savedZone || deliveryZones[0];
+      setForm((f) => ({ ...f, deliveryZoneId: target.id }));
+      setDeliveryFee(target.price);
     }
   }, [deliveryZones]);
 
@@ -259,8 +297,72 @@ export default function CartPanel() {
     setValidatingCode(false);
   };
 
+  /* ── Promo code ── */
+  function computePromoDiscount(promo: DBPromotion, cartSubtotal: number): number {
+    if (promo.max_uses && promo.uses_count >= promo.max_uses) return 0;
+    if (promo.min_order_amount && cartSubtotal < promo.min_order_amount) return 0;
+    if (promo.discount_type === "percentage") {
+      if (promo.applicable_product_ids?.length) {
+        const eligibleTotal = items
+          .filter(i => i.productId && promo.applicable_product_ids!.includes(i.productId))
+          .reduce((s, i) => s + i.price * i.quantity, 0);
+        return Math.round(eligibleTotal * promo.discount_value / 100);
+      }
+      return Math.round(cartSubtotal * promo.discount_value / 100);
+    }
+    if (promo.discount_type === "fixed") {
+      return Math.min(promo.discount_value, cartSubtotal);
+    }
+    if (promo.discount_type === "free_product") {
+      return promo.discount_value;
+    }
+    return 0;
+  }
+
+  const handleApplyPromo = () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) return;
+    setPromoValidating(true);
+    const promo = activePromos.find(p => p.code?.toUpperCase() === code);
+    if (!promo) {
+      setPromoMsg("Invalid promo code");
+      setPromoMsgValid(false);
+      setPromoApplied(null);
+      setPromoDiscount(0);
+    } else if (promo.max_uses && promo.uses_count >= promo.max_uses) {
+      setPromoMsg("This promo code has expired (max uses reached)");
+      setPromoMsgValid(false);
+      setPromoApplied(null);
+      setPromoDiscount(0);
+    } else if (promo.min_order_amount && subtotal < promo.min_order_amount) {
+      setPromoMsg(`Minimum order of ${formatPrice(promo.min_order_amount)} required`);
+      setPromoMsgValid(false);
+      setPromoApplied(null);
+      setPromoDiscount(0);
+    } else {
+      const disc = computePromoDiscount(promo, subtotal);
+      setPromoApplied(promo);
+      setPromoDiscount(disc);
+      if (promo.discount_type === "free_product") {
+        setPromoMsg(`🎁 ${promo.free_product_name || "Free product"} added to your order!`);
+      } else {
+        setPromoMsg(`${formatPrice(disc)} off applied!`);
+      }
+      setPromoMsgValid(true);
+    }
+    setPromoValidating(false);
+  };
+
+  const handleRemovePromo = () => {
+    setPromoApplied(null);
+    setPromoDiscount(0);
+    setPromoCode("");
+    setPromoMsg("");
+    setPromoMsgValid(null);
+  };
+
   /* ── Totals ── */
-  const finalTotal = Math.max(0, total - walletApplied);
+  const finalTotal = Math.max(0, total - walletApplied - promoDiscount);
 
   const STORE_ADDRESS = "4 Houses After The Poly, Parakin, Ile-Ife, Osun State";
 
@@ -292,6 +394,7 @@ export default function CartPanel() {
       `Subtotal: ${formatPrice(subtotal)}\n` +
       (isPickup ? "" : `Delivery fee: ${formatPrice(deliveryFee)}\n`) +
       (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
+      (promoDiscount > 0 ? `Promo discount (${promoApplied?.code ?? ""}): -${formatPrice(promoDiscount)}\n` : "") +
       (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
       `Total: ${formatPrice(finalTotal)}\n\n` +
       `🕐 ${isPickup ? "Pick Up" : "Delivery"} Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
@@ -318,11 +421,14 @@ export default function CartPanel() {
     setWalletApplied(0);
     handleClose();
 
+    // Snapshot promo before clearing
+    const usedPromo = promoApplied;
+    const usedPromoDiscount = promoDiscount;
+    handleRemovePromo();
+
     // Save order to DB in the background (non-blocking)
     setSavingOrder(true);
     try {
-      const promoDiscount = 0;
-
       const { data: order } = await supabase
         .from("orders")
         .insert({
@@ -334,10 +440,10 @@ export default function CartPanel() {
           delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
           delivery_fee: isPickup ? 0 : deliveryFee,
           subtotal,
-          total: finalTotal - promoDiscount,
-          discount_amount: walletApplied + promoDiscount,
+          total: finalTotal,
+          discount_amount: walletApplied + usedPromoDiscount,
           referral_wallet_used: walletApplied,
-          promo_code: null,
+          promo_code: usedPromo?.code ?? null,
           // TODO: If Paystack (or another payment gateway) is added, set status to
           // "confirmed" here once payment is verified, instead of "unpaid".
           status: "unpaid",
@@ -365,6 +471,7 @@ export default function CartPanel() {
           );
         }
 
+        /* Deduct wallet rewards */
         if (user?.id && walletApplied > 0) {
           const { data: rewards } = await supabase
             .from("user_rewards")
@@ -403,6 +510,22 @@ export default function CartPanel() {
 
           refreshRewards();
         }
+
+        /* Increment promo uses_count */
+        if (usedPromo) {
+          await supabase
+            .from("promotions")
+            .update({ uses_count: usedPromo.uses_count + 1 })
+            .eq("id", usedPromo.id);
+        }
+
+        /* Save delivery details to profile for next time */
+        if (user?.id && !isPickup && form.address) {
+          await supabase.from("profiles").update({
+            default_address: form.address,
+            default_delivery_zone_id: form.deliveryZoneId || null,
+          }).eq("id", user.id);
+        }
       }
     } catch {
       // Non-blocking
@@ -415,16 +538,19 @@ export default function CartPanel() {
 
   return (
     <Sheet open={isCartOpen} onOpenChange={handleClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" hideClose>
         <SheetTitle className="sr-only">{step === "cart" ? "Your Cart" : "Checkout"}</SheetTitle>
 
         {/* Header */}
         <div className="bg-[#E8192C] text-white px-5 py-4 flex items-center gap-3 flex-shrink-0">
-          {step === "checkout" && (
-            <button onClick={() => setStep("cart")} className="p-1 hover:bg-white/20 rounded-full">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          )}
+          {/* Cart step: back arrow closes panel. Checkout step: back arrow goes to cart. */}
+          <button
+            onClick={step === "cart" ? handleClose : () => setStep("cart")}
+            className="p-1 hover:bg-white/20 rounded-full transition-colors"
+            aria-label={step === "cart" ? "Close cart" : "Back to cart"}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <ShoppingBag className="w-6 h-6" />
           <h2 className="font-chewy text-xl flex-1">{step === "cart" ? "Your Order" : "Checkout"}</h2>
           {step === "cart" && items.length > 0 && (
@@ -770,6 +896,18 @@ export default function CartPanel() {
                   <textarea placeholder="Enter your full delivery address..." value={form.address}
                     onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
                     className={`${fieldClass} resize-none`} rows={3} />
+                  {/* Guest signup nudge */}
+                  {!user && (
+                    <p className="mt-1.5 text-xs text-gray-400 font-[Montserrat]">
+                      <a href="/login" className="text-[#E8192C] font-semibold hover:underline">Sign in</a>
+                      {" "}to save your address &amp; details for next time
+                    </p>
+                  )}
+                  {user && (
+                    <p className="mt-1.5 text-xs text-green-600 font-[Montserrat] flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Your details will be saved automatically
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -781,6 +919,67 @@ export default function CartPanel() {
                 <textarea placeholder="Any other notes..." value={form.instructions}
                   onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
                   className={`${fieldClass} resize-none`} rows={2} />
+              </div>
+
+              {/* ── Promo code ── */}
+              <div>
+                <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                  Promo Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                </label>
+                {promoApplied ? (
+                  <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Ticket className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold font-[Montserrat] text-purple-800">
+                          {promoApplied.code}
+                        </p>
+                        <p className="text-xs font-[Montserrat] text-purple-600">{promoMsg}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemovePromo}
+                      className="text-xs font-bold font-[Montserrat] text-purple-600 hover:text-purple-800 px-2 py-1 rounded-lg hover:bg-purple-100 transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Enter promo code"
+                          value={promoCode}
+                          onChange={(e) => {
+                            setPromoCode(e.target.value.toUpperCase());
+                            setPromoMsg("");
+                            setPromoMsgValid(null);
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                          className={`${fieldClass} pl-10 uppercase`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyPromo}
+                        disabled={!promoCode.trim() || promoValidating}
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40 transition-colors"
+                      >
+                        {promoValidating ? "…" : "Apply"}
+                      </button>
+                    </div>
+                    {promoMsg && (
+                      <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${promoMsgValid ? "text-green-600" : "text-red-500"}`}>
+                        {promoMsgValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                        {promoMsg}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Referral code */}
@@ -851,6 +1050,12 @@ export default function CartPanel() {
                     <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
                       <span>Wallet discount</span>
                       <span className="font-semibold">−{formatPrice(walletApplied)}</span>
+                    </div>
+                  )}
+                  {promoDiscount > 0 && (
+                    <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
+                      <span>Promo {promoApplied?.code ? `(${promoApplied.code})` : "discount"}</span>
+                      <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
                     </div>
                   )}
                   {selectedSlot && (
