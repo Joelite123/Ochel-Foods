@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DBCombo } from "@/lib/supabase";
-import { Plus, Pencil, Trash2, Eye, EyeOff, X, GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, EyeOff, X, GripVertical, ChevronDown, ChevronUp, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const formatPrice = (n: number) =>
@@ -29,6 +29,22 @@ export default function AdminCombos() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `combos/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: true });
+    if (error) { toast.error("Image upload failed"); setUploading(false); return; }
+    const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+    setForm(f => ({ ...f, image_url: data.publicUrl }));
+    setUploading(false);
+    toast.success("Image uploaded");
+  };
 
   const fetchCombos = async () => {
     setLoading(true);
@@ -275,9 +291,18 @@ export default function AdminCombos() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold font-[Montserrat] text-gray-600 mb-1 block">Image URL</label>
-                <input type="url" value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))}
-                  placeholder="https://..." className={inputClass} />
+                <label className="text-xs font-semibold font-[Montserrat] text-gray-600 mb-1 block">Image</label>
+                <div className="flex gap-2 items-center">
+                  <input type="url" value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))}
+                    placeholder="Paste URL or upload a file…" className={`${inputClass} flex-1`} />
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg text-xs font-semibold font-[Montserrat] transition-colors disabled:opacity-50 flex-shrink-0">
+                    <Upload className="w-3.5 h-3.5" />
+                    {uploading ? "Uploading…" : "Upload"}
+                  </button>
+                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </div>
                 {form.image_url && (
                   <img src={form.image_url} alt="preview" className="mt-2 h-20 w-24 rounded-lg object-cover border border-gray-200" />
                 )}
