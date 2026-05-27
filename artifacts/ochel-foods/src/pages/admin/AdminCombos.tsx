@@ -165,38 +165,6 @@ export default function AdminCombos() {
         </button>
       </div>
 
-      {/* SQL reminder */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs font-[Montserrat] text-amber-800">
-        <strong>Setup required:</strong> Run this SQL once in your Supabase dashboard to create the combos table:
-        <details className="mt-1">
-          <summary className="cursor-pointer hover:text-amber-900 font-semibold">Show SQL ▸</summary>
-          <pre className="mt-2 bg-amber-100 rounded p-2 text-[11px] overflow-x-auto whitespace-pre-wrap">{`CREATE TABLE combos (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  description text NOT NULL DEFAULT '',
-  image_url text NOT NULL DEFAULT '',
-  combo_price integer NOT NULL,
-  original_price integer NOT NULL,
-  includes jsonb NOT NULL DEFAULT '[]',
-  tag text,
-  sort_order integer NOT NULL DEFAULT 0,
-  is_active boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE combos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Public read active combos" ON combos FOR SELECT USING (is_active = true);
-CREATE POLICY "Admin full access" ON combos USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
-);
-
--- Also add saved delivery columns to profiles:
-ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS default_address text,
-  ADD COLUMN IF NOT EXISTS default_delivery_zone_id uuid REFERENCES delivery_zones(id);`}</pre>
-        </details>
-      </div>
-
       {/* Combo list */}
       {loading ? (
         <div className="text-center py-12 text-gray-400 font-[Montserrat]">Loading…</div>
