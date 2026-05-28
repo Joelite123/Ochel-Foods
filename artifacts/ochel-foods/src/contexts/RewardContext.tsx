@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase, DBUserReward, DBReferralCode, DBRewardSetting } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiUrl } from "@/lib/api";
 
 type RewardContextType = {
   rewards: DBUserReward[];
@@ -44,26 +43,31 @@ export function RewardProvider({ children }: { children: ReactNode }) {
       .order("created_at", { ascending: false });
     if (rwData) setRewards(rwData as DBUserReward[]);
 
-    // Load or auto-generate referral code via API (bypasses RLS)
-    try {
-      const res = await fetch(apiUrl("/api/referrals/generate-code"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.referralCode) setReferralCode(json.referralCode as DBReferralCode);
+    // Load referral code — auto-generate via Supabase if not yet created
+    const { data: rcData } = await supabase
+      .from("referral_codes")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+    if (rcData) {
+      setReferralCode(rcData as DBReferralCode);
+    } else {
+      // First login — create a code automatically (RLS INSERT policy required)
+      for (let i = 0; i < 5; i++) {
+        const code = Math.random().toString(36).toUpperCase().slice(2, 8);
+        const { error } = await supabase
+          .from("referral_codes")
+          .insert({ user_id: user.id, code });
+        if (!error) {
+          const { data: created } = await supabase
+            .from("referral_codes")
+            .select("*")
+            .eq("user_id", user.id)
+            .single();
+          if (created) setReferralCode(created as DBReferralCode);
+          break;
+        }
       }
-    } catch {
-      // API unreachable — fall back to direct Supabase read (code may already exist)
-      const { data: rcData } = await supabase
-        .from("referral_codes")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
-      if (rcData) setReferralCode(rcData as DBReferralCode);
     }
 
     // Load reward settings
@@ -94,22 +98,15 @@ export function RewardProvider({ children }: { children: ReactNode }) {
 
   const generateReferralCode = async (): Promise<string | null> => {
     if (!user) return null;
-    try {
-      const res = await fetch(apiUrl("/api/referrals/generate-code"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.referralCode) {
-          setReferralCode(json.referralCode as DBReferralCode);
-          return json.referralCode.code;
-        }
+    for (let i = 0; i < 5; i++) {
+      const code = Math.random().toString(36).toUpperCase().slice(2, 8);
+      const { error } = await supabase
+        .from("referral_codes")
+        .insert({ user_id: user.id, code });
+      if (!error) {
+        await loadData();
+        return code;
       }
-    } catch {
-      // ignore
     }
     return null;
   };
