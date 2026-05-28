@@ -132,6 +132,42 @@ router.post("/reward", async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/referrals/generate-code
+ * Creates a referral code for a user using the service-role key (bypasses RLS).
+ * Returns the full referral_codes row.
+ */
+router.post("/generate-code", async (req: Request, res: Response) => {
+  const { userId } = req.body as { userId?: string };
+  if (!userId) return res.status(400).json({ error: "userId required" });
+
+  // Return existing code if already present
+  const { data: existing } = await supabaseAdmin
+    .from("referral_codes")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+  if (existing) return res.json({ referralCode: existing });
+
+  // Generate a unique code — retry up to 5 times on collision
+  for (let i = 0; i < 5; i++) {
+    const code = Math.random().toString(36).toUpperCase().slice(2, 8);
+    const { error } = await supabaseAdmin
+      .from("referral_codes")
+      .insert({ user_id: userId, code });
+    if (!error) {
+      const { data: created } = await supabaseAdmin
+        .from("referral_codes")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+      return res.json({ referralCode: created });
+    }
+  }
+
+  return res.status(500).json({ error: "Failed to generate referral code" });
+});
+
+/**
  * POST /api/referrals/validate
  * Check if a referral code is valid before applying it at checkout.
  */
