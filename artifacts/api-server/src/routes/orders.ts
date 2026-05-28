@@ -64,7 +64,7 @@ router.post("/", async (req: Request, res: Response) => {
       discount_amount: Number(discount_amount || 0) + promoDiscount,
       referral_wallet_used: Number(referral_wallet_used) || 0,
       promo_code: promo_code || null,
-      status: "pending",
+      status: "unpaid",
       delivery_time: delivery_time || null,
       special_instructions: special_instructions || null,
       referral_code_used: referral_code_used || null,
@@ -126,6 +126,45 @@ router.post("/", async (req: Request, res: Response) => {
   }
 
   return res.json({ success: true, orderId: order.id });
+});
+
+/**
+ * GET /api/orders
+ * List all orders for the admin dashboard (service role — bypasses RLS).
+ */
+router.get("/", async (req: Request, res: Response) => {
+  let query = supabaseAdmin
+    .from("orders")
+    .select("*, order_items(*)")
+    .order("created_at", { ascending: false });
+
+  if (req.query.status && req.query.status !== "all") {
+    query = query.eq("status", req.query.status as string);
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
+});
+
+/**
+ * PATCH /api/orders/:id/status
+ * Update order status (admin).
+ */
+router.patch("/:id/status", async (req: Request, res: Response) => {
+  const { status } = req.body;
+  const validStatuses = ["unpaid", "confirmed", "preparing", "out_for_delivery", "delivered", "cancelled"];
+  if (!status || !validStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json(data);
 });
 
 /**

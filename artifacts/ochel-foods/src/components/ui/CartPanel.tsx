@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DBPromotion } from "@/lib/supabase";
+import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
@@ -416,6 +417,9 @@ export default function CartPanel() {
     // or browsers will block it as an unsolicited popup.
     window.open(`https://wa.me/2349056351651?text=${buildWhatsAppMessage()}`, "_blank", "noopener,noreferrer");
 
+    // Snapshot items before clearing cart
+    const snapshotItems = [...items];
+
     // Close cart and clear state right away so the user sees a clean exit
     clearCart();
     setWalletApplied(0);
@@ -426,12 +430,13 @@ export default function CartPanel() {
     const usedPromoDiscount = promoDiscount;
     handleRemovePromo();
 
-    // Save order to DB in the background (non-blocking)
+    // Save order to DB via API server (uses service role key — bypasses RLS for guest orders)
     setSavingOrder(true);
     try {
-      const { data: order } = await supabase
-        .from("orders")
-        .insert({
+      await fetch(apiUrl("/api/orders"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           user_id: user?.id ?? null,
           customer_name: form.name,
           customer_phone: form.phone,
@@ -444,91 +449,33 @@ export default function CartPanel() {
           discount_amount: walletApplied + usedPromoDiscount,
           referral_wallet_used: walletApplied,
           promo_code: usedPromo?.code ?? null,
-          // TODO: If Paystack (or another payment gateway) is added, set status to
-          // "confirmed" here once payment is verified, instead of "unpaid".
-          status: "unpaid",
           delivery_time: selectedSlot?.label ?? null,
           special_instructions: form.instructions || null,
           referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
-        })
-        .select()
-        .single();
+          items: snapshotItems.map((i) => ({
+            productId: i.productId || null,
+            name: i.name,
+            size: i.size || null,
+            price: i.price,
+            quantity: i.quantity,
+            extras: i.extras || null,
+            removedIngredients: i.removedIngredients || null,
+            note: i.note || null,
+          })),
+        }),
+      });
 
-      if (order) {
-        if (items.length) {
-          await supabase.from("order_items").insert(
-            items.map((i) => ({
-              order_id: order.id,
-              product_id: i.productId || null,
-              product_name: i.name,
-              size: i.size || null,
-              price: i.price,
-              quantity: i.quantity,
-              extras: i.extras || null,
-              removed_ingredients: i.removedIngredients || null,
-              note: i.note || null,
-            }))
-          );
-        }
-
-        /* Deduct wallet rewards */
-        if (user?.id && walletApplied > 0) {
-          const { data: rewards } = await supabase
-            .from("user_rewards")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("reward_type", "cash_credit")
-            .eq("is_used", false)
-            .gt("balance", 0)
-            .order("expires_at", { ascending: true });
-
-          let remaining = walletApplied;
-          for (const reward of rewards ?? []) {
-            if (remaining <= 0) break;
-            const deduct = Math.min(remaining, Number(reward.balance));
-            const newBalance = Number(reward.balance) - deduct;
-            await supabase
-              .from("user_rewards")
-              .update({ balance: newBalance, is_used: newBalance <= 0 })
-              .eq("id", reward.id);
-            remaining -= deduct;
-          }
-
-          const { data: profileData } = await supabase
-            .from("profiles")
-            .select("referral_wallet_balance")
-            .eq("id", user.id)
-            .single();
-          if (profileData) {
-            await supabase.from("profiles").update({
-              referral_wallet_balance: Math.max(
-                0,
-                Number(profileData.referral_wallet_balance) - walletApplied
-              ),
-            }).eq("id", user.id);
-          }
-
-          refreshRewards();
-        }
-
-        /* Increment promo uses_count */
-        if (usedPromo) {
-          await supabase
-            .from("promotions")
-            .update({ uses_count: usedPromo.uses_count + 1 })
-            .eq("id", usedPromo.id);
-        }
-
-        /* Save delivery details to profile for next time */
-        if (user?.id && !isPickup && form.address) {
-          await supabase.from("profiles").update({
-            default_address: form.address,
-            default_delivery_zone_id: form.deliveryZoneId || null,
-          }).eq("id", user.id);
-        }
+      /* Save delivery details to profile for next time (user-specific, fine via anon key) */
+      if (user?.id && !isPickup && form.address) {
+        await supabase.from("profiles").update({
+          default_address: form.address,
+          default_delivery_zone_id: form.deliveryZoneId || null,
+        }).eq("id", user.id);
       }
+
+      if (user?.id) refreshRewards();
     } catch {
-      // Non-blocking
+      // Non-blocking — order was already sent via WhatsApp
     }
     setSavingOrder(false);
   };

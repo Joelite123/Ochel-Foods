@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, RefreshCw, Eye, X } from "lucide-react";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
+import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 
 const STATUSES = [
@@ -109,11 +110,13 @@ export default function AdminOrders() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .order("created_at", { ascending: false });
-    if (data) setOrders(data as OrderWithItems[]);
+    try {
+      const res = await fetch(apiUrl("/api/orders"));
+      const data = await res.json();
+      if (Array.isArray(data)) setOrders(data as OrderWithItems[]);
+    } catch {
+      toast.error("Failed to load orders");
+    }
     setLoading(false);
   };
 
@@ -121,9 +124,24 @@ export default function AdminOrders() {
 
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(orderId);
-    const { error } = await supabase.from("orders").update({ status, updated_at: new Date().toISOString() }).eq("id", orderId);
+    try {
+      const res = await fetch(apiUrl(`/api/orders/${orderId}/status`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast.error(err.error ?? "Failed to update status");
+        setUpdating(null);
+        return;
+      }
+    } catch {
+      toast.error("Failed to update status");
+      setUpdating(null);
+      return;
+    }
     setUpdating(null);
-    if (error) return toast.error(error.message);
 
     // Update local state & selected
     setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: status as DBOrder["status"] } : o));
@@ -131,7 +149,24 @@ export default function AdminOrders() {
 
     toast.success(`Order marked as ${labelMap[status]}`);
 
-    // If delivered, process referral reward directly via Supabase
+    // Auto-send WhatsApp notification to customer
+    const order = orders.find((o) => o.id === orderId);
+    if (order) {
+      const statusMessages: Record<string, string> = {
+        confirmed:        `Hi ${order.customer_name}! ✅ Your O'chel Foods order #${orderId.slice(0, 8).toUpperCase()} has been *confirmed* and we're getting it ready for you!`,
+        preparing:        `Hi ${order.customer_name}! 👨‍🍳 Your O'chel Foods order #${orderId.slice(0, 8).toUpperCase()} is now being *prepared*. Won't be long!`,
+        out_for_delivery: `Hi ${order.customer_name}! 🛵 Your O'chel Foods order #${orderId.slice(0, 8).toUpperCase()} is *on its way* to you. Please be available to receive it!`,
+        delivered:        `Hi ${order.customer_name}! 🎉 Your O'chel Foods order #${orderId.slice(0, 8).toUpperCase()} has been *delivered*. Enjoy your meal! Thank you for choosing O'chel Foods ❤️`,
+        cancelled:        `Hi ${order.customer_name}! We're sorry, your O'chel Foods order #${orderId.slice(0, 8).toUpperCase()} has been *cancelled*. Please contact us for more info.`,
+      };
+      const message = statusMessages[status];
+      if (message) {
+        const phone = order.customer_phone.replace(/\D/g, "");
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+      }
+    }
+
+    // If delivered, process referral reward
     if (status === "delivered") {
       const order = orders.find((o) => o.id === orderId);
       if (order?.referral_code_used) {
