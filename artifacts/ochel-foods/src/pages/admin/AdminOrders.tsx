@@ -111,9 +111,22 @@ export default function AdminOrders() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/orders"));
-      const data = await res.json();
-      if (Array.isArray(data)) setOrders(data as OrderWithItems[]);
+      // Try API server first (Replit dev / deployed API)
+      const res = await fetch(apiUrl("/api/orders"), { signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) { setOrders(data as OrderWithItems[]); setLoading(false); return; }
+      }
+    } catch { /* API unreachable — fall through to Supabase */ }
+
+    // Fallback: read directly from Supabase (works for authenticated admin on Netlify)
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*, order_items(*)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      if (data) setOrders(data as OrderWithItems[]);
     } catch {
       toast.error("Failed to load orders");
     }
@@ -124,23 +137,32 @@ export default function AdminOrders() {
 
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(orderId);
+
+    let updated = false;
     try {
       const res = await fetch(apiUrl(`/api/orders/${orderId}/status`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
+        signal: AbortSignal.timeout(4000),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error ?? "Failed to update status");
+      if (res.ok) updated = true;
+    } catch { /* API unreachable — fall through */ }
+
+    if (!updated) {
+      // Fallback: update directly via Supabase (authenticated admin)
+      const { error } = await supabase
+        .from("orders")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+      if (error) {
+        toast.error("Failed to update status");
         setUpdating(null);
         return;
       }
-    } catch {
-      toast.error("Failed to update status");
-      setUpdating(null);
-      return;
+      updated = true;
     }
+
     setUpdating(null);
 
     // Update local state & selected

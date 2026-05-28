@@ -430,28 +430,34 @@ export default function CartPanel() {
     const usedPromoDiscount = promoDiscount;
     handleRemovePromo();
 
-    // Save order to DB via API server (uses service role key — bypasses RLS for guest orders)
+    // Save order to DB — try API server first, fall back to direct Supabase insert
     setSavingOrder(true);
+
+    const orderPayload = {
+      user_id: user?.id ?? null,
+      customer_name: form.name,
+      customer_phone: form.phone,
+      customer_email: form.email || null,
+      delivery_address: isPickup ? `PICK UP: ${STORE_ADDRESS}` : form.address,
+      delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
+      delivery_fee: isPickup ? 0 : deliveryFee,
+      subtotal,
+      total: finalTotal,
+      discount_amount: walletApplied + usedPromoDiscount,
+      referral_wallet_used: walletApplied,
+      promo_code: usedPromo?.code ?? null,
+      delivery_time: selectedSlot?.label ?? null,
+      special_instructions: form.instructions || null,
+      referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
+    };
+
+    let savedViaApi = false;
     try {
-      await fetch(apiUrl("/api/orders"), {
+      const res = await fetch(apiUrl("/api/orders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: user?.id ?? null,
-          customer_name: form.name,
-          customer_phone: form.phone,
-          customer_email: form.email || null,
-          delivery_address: isPickup ? `PICK UP: ${STORE_ADDRESS}` : form.address,
-          delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
-          delivery_fee: isPickup ? 0 : deliveryFee,
-          subtotal,
-          total: finalTotal,
-          discount_amount: walletApplied + usedPromoDiscount,
-          referral_wallet_used: walletApplied,
-          promo_code: usedPromo?.code ?? null,
-          delivery_time: selectedSlot?.label ?? null,
-          special_instructions: form.instructions || null,
-          referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
+          ...orderPayload,
           items: snapshotItems.map((i) => ({
             productId: i.productId || null,
             name: i.name,
@@ -463,20 +469,47 @@ export default function CartPanel() {
             note: i.note || null,
           })),
         }),
+        signal: AbortSignal.timeout(6000),
       });
+      if (res.ok) savedViaApi = true;
+    } catch { /* API unreachable — fall through */ }
 
-      /* Save delivery details to profile for next time (user-specific, fine via anon key) */
-      if (user?.id && !isPickup && form.address) {
-        await supabase.from("profiles").update({
-          default_address: form.address,
-          default_delivery_zone_id: form.deliveryZoneId || null,
-        }).eq("id", user.id);
-      }
+    if (!savedViaApi) {
+      // Fallback: write directly to Supabase (requires anon INSERT policy on orders table)
+      try {
+        const { data: order } = await supabase
+          .from("orders")
+          .insert({ ...orderPayload, status: "unpaid" })
+          .select()
+          .single();
 
-      if (user?.id) refreshRewards();
-    } catch {
-      // Non-blocking — order was already sent via WhatsApp
+        if (order && snapshotItems.length) {
+          await supabase.from("order_items").insert(
+            snapshotItems.map((i) => ({
+              order_id: order.id,
+              product_id: i.productId || null,
+              product_name: i.name,
+              size: i.size || null,
+              price: i.price,
+              quantity: i.quantity,
+              extras: i.extras || null,
+              removed_ingredients: i.removedIngredients || null,
+              note: i.note || null,
+            }))
+          );
+        }
+      } catch { /* Non-blocking — order was sent via WhatsApp */ }
     }
+
+    /* Save delivery details to profile for next time */
+    if (user?.id && !isPickup && form.address) {
+      await supabase.from("profiles").update({
+        default_address: form.address,
+        default_delivery_zone_id: form.deliveryZoneId || null,
+      }).eq("id", user.id);
+    }
+
+    if (user?.id) refreshRewards();
     setSavingOrder(false);
   };
 
