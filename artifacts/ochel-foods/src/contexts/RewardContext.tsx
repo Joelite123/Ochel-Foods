@@ -47,13 +47,32 @@ export function RewardProvider({ children }: { children: ReactNode }) {
       .order("created_at", { ascending: false });
     if (rwData) setRewards(rwData as DBUserReward[]);
 
-    // Load referral code
+    // Load referral code — auto-generate if user doesn't have one yet
     const { data: rcData } = await supabase
       .from("referral_codes")
       .select("*")
       .eq("user_id", user.id)
       .single();
-    if (rcData) setReferralCode(rcData as DBReferralCode);
+    if (rcData) {
+      setReferralCode(rcData as DBReferralCode);
+    } else {
+      // Auto-generate on first load (no button needed)
+      for (let i = 0; i < 5; i++) {
+        const code = genCode();
+        const { error } = await supabase
+          .from("referral_codes")
+          .insert({ user_id: user.id, code });
+        if (!error) {
+          const { data: newCode } = await supabase
+            .from("referral_codes")
+            .select("*")
+            .eq("user_id", user.id)
+            .single();
+          if (newCode) setReferralCode(newCode as DBReferralCode);
+          break;
+        }
+      }
+    }
 
     // Load reward settings
     const { data: rsData } = await supabase

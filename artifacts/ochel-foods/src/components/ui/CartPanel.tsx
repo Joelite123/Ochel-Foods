@@ -227,14 +227,16 @@ export default function CartPanel() {
     }
   }, [profile]);
 
-  /* Sync delivery zone to saved zone or first zone */
+  /* Sync delivery zone to saved profile zone only — no auto-select of first zone */
   useEffect(() => {
     if (deliveryZones.length && !form.deliveryZoneId) {
       const savedId = (profileRef.current as any)?.default_delivery_zone_id;
       const savedZone = savedId ? deliveryZones.find(z => z.id === savedId) : null;
-      const target = savedZone || deliveryZones[0];
-      setForm((f) => ({ ...f, deliveryZoneId: target.id }));
-      setDeliveryFee(target.price);
+      if (savedZone) {
+        setForm((f) => ({ ...f, deliveryZoneId: savedZone.id }));
+        setDeliveryFee(savedZone.price);
+      }
+      // New users see a blank — they must pick their own area
     }
   }, [deliveryZones]);
 
@@ -244,7 +246,7 @@ export default function CartPanel() {
     return DELIVERY_ZONES.map((z, i) => ({ id: String(i), label: z.label, price: z.price }));
   }, [deliveryZones]);
 
-  const selectedZone = allZones.find((z) => z.id === form.deliveryZoneId) ?? allZones[0];
+  const selectedZone = allZones.find((z) => z.id === form.deliveryZoneId) ?? null;
   const selectedSlot = slots.find((s) => s.value === form.deliveryTime) ?? slots[0];
 
   const filteredZones = useMemo(() =>
@@ -369,8 +371,13 @@ export default function CartPanel() {
 
   /* ── When pickup toggled, zero out delivery fee ── */
   useEffect(() => {
-    if (isPickup) setDeliveryFee(0);
-    else if (allZones.length) setDeliveryFee(allZones[0].price);
+    if (isPickup) {
+      setDeliveryFee(0);
+    } else {
+      // Restore fee from selected zone if one is already chosen, else 0
+      const saved = allZones.find((z) => z.id === form.deliveryZoneId);
+      setDeliveryFee(saved ? saved.price : 0);
+    }
   }, [isPickup]);
 
   /* ── Build WhatsApp message ── */
@@ -388,6 +395,11 @@ export default function CartPanel() {
     const fulfillmentLine = isPickup
       ? `🏪 Order Type: PICK UP at O'chel Foods Storefront\n📍 ${STORE_ADDRESS}\n`
       : `🚚 Order Type: Delivery\n📍 Delivery Area: ${selectedZone?.label ?? "—"} — ${formatPrice(deliveryFee)}\n`;
+
+    // If a free-product promo is applied, append it as a line item
+    if (promoApplied?.discount_type === "free_product" && promoApplied?.free_product_name) {
+      lines.push(`• 🎁 ${promoApplied.free_product_name} (FREE — promo ${promoApplied.code}) ×1`);
+    }
 
     return encodeURIComponent(
       `Hello O'chel Foods! I'd like to place an order:\n\n` +
@@ -513,7 +525,7 @@ export default function CartPanel() {
     setSavingOrder(false);
   };
 
-  const canCheckout = form.name.trim() && form.phone.trim() && (isPickup || form.address.trim());
+  const canCheckout = form.name.trim() && form.phone.trim() && (isPickup || (form.address.trim() && form.deliveryZoneId));
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
@@ -1032,7 +1044,13 @@ export default function CartPanel() {
                       <span className="font-semibold">−{formatPrice(walletApplied)}</span>
                     </div>
                   )}
-                  {promoDiscount > 0 && (
+                  {promoApplied?.discount_type === "free_product" && promoApplied?.free_product_name && (
+                    <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
+                      <span>🎁 {promoApplied.free_product_name} (FREE)</span>
+                      <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
+                    </div>
+                  )}
+                  {promoDiscount > 0 && promoApplied?.discount_type !== "free_product" && (
                     <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
                       <span>Promo {promoApplied?.code ? `(${promoApplied.code})` : "discount"}</span>
                       <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
@@ -1049,7 +1067,11 @@ export default function CartPanel() {
 
               {!canCheckout && (
                 <p className="text-xs text-gray-400 font-[Montserrat] text-center mb-2">
-                  Fill in Name, Phone &amp; Address to continue
+                  {!form.name.trim() || !form.phone.trim()
+                    ? "Fill in Name & Phone to continue"
+                    : !isPickup && !form.deliveryZoneId
+                    ? "Please select your Delivery Area to continue"
+                    : "Fill in your delivery Address to continue"}
                 </p>
               )}
 
