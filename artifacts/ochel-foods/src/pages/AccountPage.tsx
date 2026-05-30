@@ -80,7 +80,7 @@ export default function AccountPage() {
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "overview", label: "Overview", icon: <User className="w-4 h-4" /> },
-    { key: "orders", label: "My Orders", icon: <Package className="w-4 h-4" /> },
+    { key: "orders", label: "Orders", icon: <Package className="w-4 h-4" /> },
     { key: "rewards", label: "Rewards", icon: <Wallet className="w-4 h-4" /> },
     { key: "referral", label: "Referral", icon: <Gift className="w-4 h-4" /> },
   ];
@@ -121,14 +121,15 @@ export default function AccountPage() {
         </motion.div>
       )}
 
-      {/* Tab nav */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6 overflow-x-auto">
+      {/* Tab nav — icon above label so all 4 fit on mobile */}
+      <div className="grid grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl mb-6">
         {tabs.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold font-[Montserrat] transition-all whitespace-nowrap flex-1 justify-center ${
+            className={`flex flex-col items-center gap-1 px-1 py-2 rounded-lg transition-all ${
               tab === t.key ? "bg-white text-[#E8192C] shadow-sm" : "text-gray-500 hover:text-gray-700"
             }`}>
-            {t.icon} {t.label}
+            {t.icon}
+            <span className="text-[10px] font-semibold font-[Montserrat] leading-none">{t.label}</span>
           </button>
         ))}
       </div>
