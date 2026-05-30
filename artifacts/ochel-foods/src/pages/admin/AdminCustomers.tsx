@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, Eye, X, Wallet, Gift } from "lucide-react";
 import { supabase, Profile, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
+import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 
 type CustomerData = Profile & {
@@ -23,10 +24,29 @@ export default function AdminCustomers() {
 
   const load = async () => {
     setLoading(true);
-    const { data: profiles } = await supabase.from("profiles").select("*").eq("role", "customer").order("created_at", { ascending: false });
+
+    // Try API server first (service-role key, bypasses RLS)
+    try {
+      const res = await fetch(apiUrl("/api/customers"), { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setCustomers(data as CustomerData[]);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch { /* API unreachable — fall through */ }
+
+    // Fallback: direct Supabase (requires admin SELECT policy on profiles)
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("role", "customer")
+      .order("created_at", { ascending: false });
+
     if (!profiles) { setLoading(false); return; }
 
-    // Enrich with order stats and referral codes
     const enriched: CustomerData[] = await Promise.all(
       (profiles as Profile[]).map(async (p) => {
         const [{ data: orders }, { data: ref }] = await Promise.all([
@@ -50,6 +70,14 @@ export default function AdminCustomers() {
 
   const openCustomer = async (c: CustomerData) => {
     setSelected(c);
+    // Try API first, fall back to Supabase
+    try {
+      const res = await fetch(apiUrl(`/api/customers/${c.id}/orders`), { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) { setSelectedOrders(data as DBOrder[]); return; }
+      }
+    } catch { /* fall through */ }
     const { data } = await supabase.from("orders").select("*").eq("user_id", c.id).order("created_at", { ascending: false }).limit(10);
     setSelectedOrders((data as DBOrder[]) || []);
   };

@@ -487,18 +487,18 @@ export default function CartPanel() {
     } catch { /* API unreachable — fall through */ }
 
     if (!savedViaApi) {
-      // Fallback: write directly to Supabase (requires anon INSERT policy on orders table)
+      // Fallback: write directly to Supabase (requires anon INSERT policy on orders + order_items tables)
+      // Generate ID client-side so we don't need a SELECT-after-insert (avoids RLS SELECT issues)
       try {
-        const { data: order } = await supabase
+        const orderId = crypto.randomUUID();
+        const { error: orderErr } = await supabase
           .from("orders")
-          .insert({ ...orderPayload, status: "unpaid" })
-          .select()
-          .single();
+          .insert({ id: orderId, ...orderPayload, status: "unpaid" });
 
-        if (order && snapshotItems.length) {
+        if (!orderErr && snapshotItems.length) {
           await supabase.from("order_items").insert(
             snapshotItems.map((i) => ({
-              order_id: order.id,
+              order_id: orderId,
               product_id: i.productId || null,
               product_name: i.name,
               size: i.size || null,
