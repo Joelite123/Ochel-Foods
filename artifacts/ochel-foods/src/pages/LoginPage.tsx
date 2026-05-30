@@ -5,10 +5,10 @@ import { Eye, EyeOff, User, Lock, Mail, Phone, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
-type Tab = "login" | "signup";
+type Tab = "login" | "signup" | "forgot";
 
 export default function LoginPage() {
-  const { signIn, signUp, user, profile } = useAuth();
+  const { signIn, signUp, resetPasswordForEmail, user, profile } = useAuth();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("login");
   const [showPwd, setShowPwd] = useState(false);
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [awaitingRedirect, setAwaitingRedirect] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
 
   // Read ?next= param from URL (set by AdminGuard when redirecting to login)
   const nextPath = new URLSearchParams(window.location.search).get("next") || "";
@@ -54,6 +55,16 @@ export default function LoginPage() {
     setAwaitingRedirect(true);
     // Fallback: if profile never loads (no row in DB), go to /account after 3 s
     setTimeout(() => navigate(nextPath || "/account"), 3000);
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return setError("Please enter your email address");
+    setError(""); setLoading(true);
+    const { error } = await resetPasswordForEmail(forgotEmail.trim());
+    setLoading(false);
+    if (error) return setError(error);
+    setSuccess("If an account with that email exists, a password reset link has been sent. Check your inbox.");
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -97,22 +108,24 @@ export default function LoginPage() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden"
         >
-          {/* Tab switcher */}
-          <div className="flex border-b border-gray-100">
-            {(["login", "signup"] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => { setTab(t); setError(""); setSuccess(""); }}
-                className={`flex-1 py-4 font-bold font-[Montserrat] text-sm transition-colors ${
-                  tab === t
-                    ? "text-[#E8192C] border-b-2 border-[#E8192C]"
-                    : "text-gray-400 hover:text-gray-600"
-                }`}
-              >
-                {t === "login" ? "Sign In" : "Create Account"}
-              </button>
-            ))}
-          </div>
+          {/* Tab switcher — hidden on forgot view */}
+          {tab !== "forgot" && (
+            <div className="flex border-b border-gray-100">
+              {(["login", "signup"] as Tab[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => { setTab(t as Tab); setError(""); setSuccess(""); }}
+                  className={`flex-1 py-4 font-bold font-[Montserrat] text-sm transition-colors ${
+                    tab === t
+                      ? "text-[#E8192C] border-b-2 border-[#E8192C]"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  {t === "login" ? "Sign In" : "Create Account"}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="p-6">
             {error && (
@@ -126,7 +139,64 @@ export default function LoginPage() {
               </div>
             )}
 
-            {tab === "login" ? (
+            {tab === "forgot" ? (
+              <form onSubmit={handleForgot} className="space-y-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="bg-[#E8192C]/10 p-3 rounded-xl">
+                    <Mail className="w-6 h-6 text-[#E8192C]" />
+                  </div>
+                  <div>
+                    <h2 className="font-chewy text-2xl text-gray-800 leading-tight">Forgot Password?</h2>
+                    <p className="text-gray-400 text-xs font-[Montserrat]">We'll send a reset link to your email</p>
+                  </div>
+                </div>
+
+                {!success && (
+                  <p className="text-gray-500 text-sm font-[Montserrat] leading-relaxed">
+                    Enter your email address and we'll send you a link to reset your password.
+                  </p>
+                )}
+
+                {success ? (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-4 font-[Montserrat]">
+                    <p className="text-green-700 text-sm font-semibold mb-1">Check your inbox!</p>
+                    <p className="text-green-600 text-sm">{success}</p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="email"
+                      placeholder="Email address"
+                      required
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className={`${field} pl-10`}
+                    />
+                  </div>
+                )}
+
+                {!success && (
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold py-3 rounded-xl font-[Montserrat] transition-colors disabled:opacity-60"
+                  >
+                    {loading ? "Sending…" : "Send Reset Link"}
+                  </button>
+                )}
+
+                <p className="text-center text-sm font-[Montserrat]">
+                  <button
+                    type="button"
+                    onClick={() => { setTab("login"); setError(""); setSuccess(""); }}
+                    className="text-[#E8192C] font-semibold hover:underline"
+                  >
+                    ← Back to Sign In
+                  </button>
+                </p>
+              </form>
+            ) : tab === "login" ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <h2 className="font-chewy text-2xl text-gray-800 mb-1">Welcome back!</h2>
                 <p className="text-gray-400 text-sm font-[Montserrat] mb-4">Sign in to your O'chel account</p>
@@ -150,6 +220,16 @@ export default function LoginPage() {
                   </button>
                 </div>
 
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => { setTab("forgot"); setError(""); setSuccess(""); setForgotEmail(loginForm.email); }}
+                    className="text-xs text-[#E8192C] font-semibold font-[Montserrat] hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+
                 <button type="submit" disabled={loading}
                   className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold py-3 rounded-xl font-[Montserrat] transition-colors disabled:opacity-60">
                   {loading ? "Signing in…" : "Sign In"}
@@ -163,7 +243,7 @@ export default function LoginPage() {
                   </button>
                 </p>
               </form>
-            ) : (
+            ) : tab === "signup" ? (
               <form onSubmit={handleSignup} className="space-y-4">
                 <h2 className="font-chewy text-2xl text-gray-800 mb-1">Join O'chel Foods</h2>
                 <p className="text-gray-400 text-sm font-[Montserrat] mb-4">
@@ -219,7 +299,7 @@ export default function LoginPage() {
                   By signing up you agree to our Terms of Service
                 </p>
               </form>
-            )}
+            ) : null}
           </div>
         </motion.div>
       </div>

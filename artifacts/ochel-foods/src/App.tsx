@@ -22,6 +22,7 @@ import BakedGoodiesPage from "@/pages/BakedGoodiesPage";
 import CombosPage from "@/pages/CombosPage";
 import AboutPage from "@/pages/AboutPage";
 import LoginPage from "@/pages/LoginPage";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import AccountPage from "@/pages/AccountPage";
 import PrintStation from "@/pages/PrintStation";
 
@@ -173,6 +174,7 @@ function Router() {
 
       {/* ── Auth pages (no header/footer) ── */}
       <Route path="/login" component={LoginPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
 
       {/* ── Internal tools (no header/footer) ── */}
       <Route path="/print-station" component={PrintStation} />
