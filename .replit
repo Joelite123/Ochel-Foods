@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-20", "web"]
 
 [deployment]
 router = "application"
@@ -41,3 +41,6 @@ externalPort = 3000
 VITE_SUPABASE_URL = "https://fcukkruyuhnehujmlrur.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjdWtrcnV5dWhuZWh1am1scnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NDgyODIsImV4cCI6MjA5NDQyNDI4Mn0.qUa8CELdrEx4BB-q6mkNW8_78Hoe4I9ok623kZD4YVs"
 SUPABASE_URL = "https://fcukkruyuhnehujmlrur.supabase.co"
+
+[nix]
+channel = "stable-25_05"
