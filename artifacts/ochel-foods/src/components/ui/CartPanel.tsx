@@ -10,7 +10,8 @@ import {
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRewards } from "@/contexts/RewardContext";
-import { DELIVERY_ZONES, drinkProducts, formatPrice } from "@/data/menuData";
+import { DELIVERY_ZONES, formatPrice } from "@/data/menuData";
+import { useMenuData } from "@/hooks/useMenuData";
 import { toast } from "sonner";
 
 /* ─── Delivery time helpers (now also reads from Supabase when available) ─── */
@@ -113,6 +114,8 @@ export default function CartPanel() {
   const { items, isCartOpen, setIsCartOpen, removeItem, updateQuantity, addItem, subtotal, total, setDeliveryFee, deliveryFee, clearCart } = useCart();
   const { user, profile } = useAuth();
   const { walletBalance, walletApplied, setWalletApplied, refresh: refreshRewards } = useRewards();
+  const { byCategory } = useMenuData();
+  const liveDrinks = byCategory("drinks");
 
   /* keep a ref to profile so zone-sync effect can read it without re-running */
   const profileRef = useRef(profile);
@@ -126,6 +129,7 @@ export default function CartPanel() {
   const [referralMsg, setReferralMsg] = useState("");
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [isPickup, setIsPickup] = useState(false);
   const [zoneSearch, setZoneSearch] = useState("");
@@ -530,6 +534,29 @@ export default function CartPanel() {
     setSavingOrder(false);
   };
 
+  const handleProceedToCheckout = async () => {
+    const productIds = items.map((i) => i.productId).filter(Boolean);
+    if (productIds.length > 0) {
+      setCheckingAvailability(true);
+      const { data: available } = await supabase
+        .from("products")
+        .select("id")
+        .in("id", productIds)
+        .eq("is_available", true);
+      setCheckingAvailability(false);
+      const availableIds = new Set((available ?? []).map((p: { id: string }) => p.id));
+      const unavailable = items.filter((i) => i.productId && !availableIds.has(i.productId));
+      if (unavailable.length > 0) {
+        unavailable.forEach((i) => {
+          removeItem(i.id);
+          toast.error(`"${i.name}" is no longer available and has been removed from your cart.`);
+        });
+        return;
+      }
+    }
+    setStep("checkout");
+  };
+
   const canCheckout = form.name.trim() && form.phone.trim() && (isPickup || (form.address.trim() && form.deliveryZoneId));
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
@@ -648,8 +675,8 @@ export default function CartPanel() {
                 </div>
               ))}
 
-              {/* ── Drink upsell nudge ── */}
-              {!drinkNudgeDismissed && !items.some((i) => i.category === "drinks") && (
+              {/* ── Drink upsell nudge (only shows currently available drinks) ── */}
+              {!drinkNudgeDismissed && !items.some((i) => i.category === "drinks") && liveDrinks.length > 0 && (
                 <div className="mt-1 rounded-2xl border-2 border-[#FFB800] bg-amber-50 p-3">
                   <div className="flex items-start justify-between gap-2 mb-2.5">
                     <div className="flex items-center gap-1.5">
@@ -667,7 +694,7 @@ export default function CartPanel() {
                     </button>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {drinkProducts.map((drink) => (
+                    {liveDrinks.map((drink) => (
                       <div key={drink.id} className="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-amber-100">
                         <div className="min-w-0">
                           <p className="font-[Montserrat] text-sm font-semibold text-gray-800 leading-tight truncate">
@@ -711,9 +738,11 @@ export default function CartPanel() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setStep("checkout")}
-                className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold py-3 px-6 rounded-xl font-[Montserrat]">
-                Proceed to Checkout
+              <button
+                onClick={handleProceedToCheckout}
+                disabled={checkingAvailability}
+                className="w-full bg-[#E8192C] hover:bg-[#c8151f] disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-opacity">
+                {checkingAvailability ? "Checking availability…" : "Proceed to Checkout"}
               </button>
             </div>
           </>
