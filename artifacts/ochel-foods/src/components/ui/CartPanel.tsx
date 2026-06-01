@@ -495,8 +495,10 @@ export default function CartPanel() {
           .from("orders")
           .insert({ id: orderId, ...orderPayload, status: "unpaid" });
 
-        if (!orderErr && snapshotItems.length) {
-          await supabase.from("order_items").insert(
+        if (orderErr) {
+          console.error("[Checkout] Supabase order insert failed:", orderErr.message);
+        } else if (snapshotItems.length) {
+          const { error: itemsErr } = await supabase.from("order_items").insert(
             snapshotItems.map((i) => ({
               order_id: orderId,
               product_id: i.productId || null,
@@ -509,8 +511,11 @@ export default function CartPanel() {
               note: i.note || null,
             }))
           );
+          if (itemsErr) console.error("[Checkout] Supabase order_items insert failed:", itemsErr.message);
         }
-      } catch { /* Non-blocking — order was sent via WhatsApp */ }
+      } catch (err) {
+        console.error("[Checkout] Supabase fallback error:", err);
+      }
     }
 
     /* Save delivery details to profile for next time */
