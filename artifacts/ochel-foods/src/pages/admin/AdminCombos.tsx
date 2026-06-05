@@ -38,7 +38,7 @@ export default function AdminCombos() {
     setUploading(true);
     const ext = file.name.split(".").pop();
     const path = `combos/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from("product-images").upload(path, file, { upsert: true, cacheControl: "604800" });
     if (error) { toast.error("Image upload failed"); setUploading(false); return; }
     const { data } = supabase.storage.from("product-images").getPublicUrl(path);
     setForm(f => ({ ...f, image_url: data.publicUrl }));

@@ -69,7 +69,7 @@ export default function AdminPromotions() {
     if (!file) return;
     setUploading(true);
     const path = `${Date.now()}-${file.name}`;
-    const { error } = await supabase.storage.from("promo-banners").upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from("promo-banners").upload(path, file, { upsert: true, cacheControl: "7200" });
     if (error) { toast.error("Upload failed"); setUploading(false); return; }
     const { data } = supabase.storage.from("promo-banners").getPublicUrl(path);
     setForm((f) => ({ ...f, banner_url: data.publicUrl }));
