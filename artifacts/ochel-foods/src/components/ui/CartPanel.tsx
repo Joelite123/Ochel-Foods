@@ -5,7 +5,7 @@ import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
-  Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store, Ticket,
+  Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store, Ticket, Copy,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -110,6 +110,13 @@ type CheckoutForm = {
   referralCode: string;
 };
 
+/* ─── Payment bank details — update here to change account info site-wide ─── */
+const BANK_DETAILS = {
+  bankName: "Moniepoint MFB",
+  accountName: "O'chel Foods Ltd",
+  accountNumber: "4005702700",
+};
+
 export default function CartPanel() {
   const { items, isCartOpen, setIsCartOpen, removeItem, updateQuantity, addItem, subtotal, total, setDeliveryFee, deliveryFee, clearCart } = useCart();
   const { user, profile } = useAuth();
@@ -130,6 +137,8 @@ export default function CartPanel() {
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [isPickup, setIsPickup] = useState(false);
   const [zoneSearch, setZoneSearch] = useState("");
@@ -368,6 +377,14 @@ export default function CartPanel() {
     setPromoMsgValid(null);
   };
 
+  /* ── Copy to clipboard ── */
+  const handleCopy = (field: string, value: string) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
+  };
+
   /* ── Totals ── */
   const finalTotal = Math.max(0, total - walletApplied - promoDiscount);
 
@@ -384,57 +401,57 @@ export default function CartPanel() {
     }
   }, [isPickup]);
 
-  /* ── Build WhatsApp message ── */
-  const buildWhatsAppMessage = () => {
-    const lines = items.map((item) => {
+  /* ── Build WhatsApp message (payment confirmation flow) ── */
+  const buildPaymentWhatsAppMessage = (snapshotItems = items) => {
+    const lines = snapshotItems.map((item) => {
       let line = `• ${item.name}`;
       if (item.size) line += ` (${item.size})`;
       if (item.extras?.length) line += ` + ${item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}`;
       if (item.removedIngredients?.length) line += ` [NO ${item.removedIngredients.join(", NO ")}]`;
-      line += ` ×${item.quantity} = ${formatPrice(item.price * item.quantity)}`;
+      line += ` ×${item.quantity} — ${formatPrice(item.price * item.quantity)}`;
       if (item.note) line += `\n  Note: ${item.note}`;
       return line;
     });
 
-    const fulfillmentLine = isPickup
-      ? `🏪 Order Type: PICK UP at O'chel Foods Storefront\n📍 ${STORE_ADDRESS}\n`
-      : `🚚 Order Type: Delivery\n📍 Delivery Area: ${selectedZone?.label ?? "—"} — ${formatPrice(deliveryFee)}\n`;
-
-    // If a free-product promo is applied, append it as a line item
     if (promoApplied?.discount_type === "free_product" && promoApplied?.free_product_name) {
       lines.push(`• 🎁 ${promoApplied.free_product_name} (FREE — promo ${promoApplied.code}) ×1`);
     }
 
+    const addressLine = isPickup
+      ? `🏪 Pick Up at O'chel Foods Storefront\n📍 ${STORE_ADDRESS}`
+      : `${form.address || "—"}${selectedZone ? ` (${selectedZone.label})` : ""}`;
+
     return encodeURIComponent(
-      `Hello O'chel Foods! I'd like to place an order:\n\n` +
-      `${lines.join("\n")}\n\n` +
-      `Subtotal: ${formatPrice(subtotal)}\n` +
-      (isPickup ? "" : `Delivery fee: ${formatPrice(deliveryFee)}\n`) +
-      (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
-      (promoDiscount > 0 ? `Promo discount (${promoApplied?.code ?? ""}): -${formatPrice(promoDiscount)}\n` : "") +
-      (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
-      `Total: ${formatPrice(finalTotal)}\n\n` +
-      `🕐 ${isPickup ? "Pick Up" : "Delivery"} Time: ${selectedSlot?.label ?? "ASAP"}\n\n` +
-      fulfillmentLine + `\n` +
-      `👤 Contact Details:\n` +
+      `Hello O'chel Foods 👋\n\n` +
+      `I have completed payment for my order.\n\n` +
       `Name: ${form.name}\n` +
-      `Phone: ${form.phone}\n` +
-      (!isPickup && form.address ? `Address: ${form.address}\n` : "") +
-      (form.instructions ? `Instructions: ${form.instructions}\n` : "") +
-      `\nPlease confirm my order. Thank you!`
+      `Phone: ${form.phone}\n\n` +
+      `Delivery Address (or pickup):\n${addressLine}\n\n` +
+      `Order Total:\n${formatPrice(finalTotal)}\n` +
+      (isPickup ? "" : `(incl. ${formatPrice(deliveryFee)} delivery)\n`) +
+      (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
+      (promoDiscount > 0 ? `Promo (${promoApplied?.code ?? ""}): -${formatPrice(promoDiscount)}\n` : "") +
+      (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
+      `\n🕐 ${isPickup ? "Pick Up" : "Delivery"} Time: ${selectedSlot?.label ?? "ASAP"}\n` +
+      (form.instructions ? `📝 Notes: ${form.instructions}\n` : "") +
+      `\nOrder Details:\n${lines.join("\n")}\n\n` +
+      `I am sending my payment receipt now.`
     );
   };
 
-  /* ── Save order to DB + open WhatsApp ── */
+  /* ── Save order to DB + open WhatsApp (triggered from payment modal) ── */
   const handlePlaceOrder = async () => {
     if (!canCheckout) return;
 
-    // Open WhatsApp IMMEDIATELY — must happen synchronously before any awaits
-    // or browsers will block it as an unsolicited popup.
-    window.open(`https://wa.me/2349056351651?text=${buildWhatsAppMessage()}`, "_blank", "noopener,noreferrer");
-
-    // Snapshot items before clearing cart
+    // Snapshot items BEFORE any state changes
     const snapshotItems = [...items];
+
+    // Open WhatsApp IMMEDIATELY — must happen synchronously on direct user click
+    // before any awaits or browsers will block it as an unsolicited popup.
+    window.open(`https://wa.me/2349056351651?text=${buildPaymentWhatsAppMessage(snapshotItems)}`, "_blank", "noopener,noreferrer");
+
+    // Close payment modal right away
+    setPaymentModalOpen(false);
 
     // Close cart and clear state right away so the user sees a clean exit
     clearCart();
@@ -561,6 +578,7 @@ export default function CartPanel() {
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
+    <>
     <Sheet open={isCartOpen} onOpenChange={handleClose}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" hideClose>
         <SheetTitle className="sr-only">{step === "cart" ? "Your Cart" : "Checkout"}</SheetTitle>
@@ -1110,23 +1128,146 @@ export default function CartPanel() {
               )}
 
               <button
-                onClick={handlePlaceOrder}
-                disabled={!canCheckout || savingOrder}
+                onClick={() => setPaymentModalOpen(true)}
+                disabled={!canCheckout}
                 className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
-                  canCheckout && !savingOrder
-                    ? "bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                  canCheckout
+                    ? "bg-[#E8192C] hover:bg-[#c8151f] text-white"
                     : "bg-gray-200 text-gray-400 cursor-not-allowed"
                 }`}
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current flex-shrink-0">
                   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                 </svg>
-                {savingOrder ? "Sending…" : "Order via WhatsApp"}
+                Order via WhatsApp
               </button>
             </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+
+    {/* ── Payment Modal ── */}
+    {paymentModalOpen && (
+      <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center">
+        {/* Backdrop */}
+        <div
+          className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          onClick={() => setPaymentModalOpen(false)}
+        />
+
+        {/* Panel */}
+        <div className="relative w-full sm:max-w-sm mx-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+
+          {/* Header */}
+          <div className="bg-[#E8192C] px-5 py-4 flex items-center justify-between flex-shrink-0">
+            <div>
+              <h2 className="font-chewy text-xl text-white leading-tight">Complete Your Payment</h2>
+              <p className="text-red-100 text-xs font-[Montserrat] mt-0.5">Transfer before sending your order</p>
+            </div>
+            <button
+              onClick={() => setPaymentModalOpen(false)}
+              className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="overflow-y-auto flex-1">
+            {/* Order total banner */}
+            <div className="bg-gradient-to-br from-red-50 to-orange-50 border-b border-red-100 px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-[Montserrat] text-gray-500 uppercase tracking-wide">Order Total</p>
+                <p className="font-chewy text-3xl text-[#E8192C] leading-tight">{formatPrice(finalTotal)}</p>
+              </div>
+              <button
+                onClick={() => handleCopy("total", String(finalTotal))}
+                className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-1.5 rounded-lg border transition-all ${
+                  copiedField === "total"
+                    ? "bg-green-100 border-green-300 text-green-700"
+                    : "bg-white border-gray-200 text-gray-600 hover:border-[#E8192C] hover:text-[#E8192C]"
+                }`}
+              >
+                {copiedField === "total" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedField === "total" ? "Copied ✓" : "Copy amount"}
+              </button>
+            </div>
+
+            {/* Bank details */}
+            <div className="px-5 pt-4 pb-2">
+              <p className="text-xs font-[Montserrat] font-bold text-gray-400 uppercase tracking-widest mb-3">Bank Details</p>
+
+              {[
+                { key: "bankName",      label: "Bank Name",      value: BANK_DETAILS.bankName },
+                { key: "accountName",   label: "Account Name",   value: BANK_DETAILS.accountName },
+                { key: "accountNumber", label: "Account Number", value: BANK_DETAILS.accountNumber },
+              ].map(({ key, label, value }) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+                >
+                  <div>
+                    <p className="text-xs text-gray-400 font-[Montserrat]">{label}</p>
+                    <p className={`font-semibold font-[Montserrat] mt-0.5 ${key === "accountNumber" ? "text-xl font-chewy text-gray-900 tracking-wider" : "text-sm text-gray-800"}`}>
+                      {value}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleCopy(key, value)}
+                    className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 ml-3 ${
+                      copiedField === key
+                        ? "bg-green-100 border-green-300 text-green-700"
+                        : "bg-gray-50 border-gray-200 text-gray-500 hover:border-[#E8192C] hover:text-[#E8192C]"
+                    }`}
+                  >
+                    {copiedField === key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedField === key ? "Copied ✓" : "Copy"}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Steps */}
+            <div className="mx-5 mb-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+              <p className="text-xs font-bold font-[Montserrat] text-amber-800 uppercase tracking-wide mb-2.5">How to pay</p>
+              {[
+                "Copy the account details above.",
+                "Transfer the exact amount using your banking app.",
+                "Come back and tap \"I've Made Payment\" below.",
+                "When WhatsApp opens, send your payment receipt.",
+              ].map((step, i) => (
+                <div key={i} className="flex items-start gap-2.5 mb-2 last:mb-0">
+                  <span className="w-5 h-5 rounded-full bg-[#E8192C] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 font-[Montserrat]">
+                    {i + 1}
+                  </span>
+                  <p className="text-xs font-[Montserrat] text-amber-900 leading-relaxed">{step}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CTA footer */}
+          <div className="px-5 pb-6 pt-3 border-t border-gray-100 bg-white flex-shrink-0">
+            <button
+              onClick={handlePlaceOrder}
+              disabled={savingOrder}
+              className="w-full flex items-center justify-center gap-2.5 bg-[#25D366] hover:bg-[#1ebe5d] disabled:opacity-60 text-white font-bold py-4 px-6 rounded-2xl font-[Montserrat] text-base transition-colors shadow-lg shadow-green-200"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current flex-shrink-0">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              {savingOrder ? "Opening WhatsApp…" : "I've Made Payment"}
+            </button>
+            <button
+              onClick={() => setPaymentModalOpen(false)}
+              className="w-full mt-2 text-sm text-gray-400 hover:text-gray-600 font-[Montserrat] py-2 transition-colors"
+            >
+              Go back to checkout
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
