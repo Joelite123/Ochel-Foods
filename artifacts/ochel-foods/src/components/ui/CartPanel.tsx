@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabase";
 import type { DBPromotion } from "@/lib/supabase";
 import { apiUrl } from "@/lib/api";
@@ -1147,8 +1148,8 @@ export default function CartPanel() {
       </SheetContent>
     </Sheet>
 
-    {/* ── Payment Modal ── */}
-    {paymentModalOpen && (
+    {/* ── Payment Modal — rendered in a portal so Radix focus-trap doesn't block it ── */}
+    {paymentModalOpen && createPortal(
       <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center">
         {/* Backdrop */}
         <div
@@ -1267,7 +1268,7 @@ export default function CartPanel() {
           </div>
         </div>
       </div>
-    )}
+    , document.body)}
     </>
   );
 }
