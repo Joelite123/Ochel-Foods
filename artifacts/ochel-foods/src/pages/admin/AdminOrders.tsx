@@ -257,12 +257,12 @@ export default function AdminOrders() {
                 <tr><td colSpan={7} className="text-center py-12 text-gray-400">No orders found</td></tr>
               ) : filtered.map((o) => (
                 <tr key={o.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">#{o.id.slice(0, 8).toUpperCase()}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-[#E8192C] cursor-pointer hover:underline" onClick={() => openDetail(o)}>#{o.id.slice(0, 8).toUpperCase()}</td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-800">{o.customer_name}</p>
                     <p className="text-gray-400 text-xs">{o.customer_phone}</p>
                   </td>
-                  <td className="px-4 py-3 font-semibold text-[#E8192C]">{formatPrice(Number(o.total))}</td>
+                  <td className="px-4 py-3 font-semibold text-[#E8192C] cursor-pointer hover:underline" onClick={() => openDetail(o)}>{formatPrice(Number(o.total))}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colorMap[o.status] ?? "bg-gray-100 text-gray-500"}`}>
                       {labelMap[o.status] ?? o.status}
