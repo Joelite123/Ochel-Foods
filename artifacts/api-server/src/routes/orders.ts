@@ -12,7 +12,7 @@ router.post("/", async (req: Request, res: Response) => {
     user_id, customer_name, customer_phone, customer_email,
     delivery_address, delivery_zone_id, delivery_fee, subtotal, total,
     discount_amount, referral_wallet_used, promo_code, delivery_time,
-    special_instructions, referral_code_used, items,
+    delivery_date, special_instructions, referral_code_used, items,
   } = req.body;
 
   if (!customer_name || !customer_phone || !delivery_address || !subtotal) {
@@ -66,6 +66,7 @@ router.post("/", async (req: Request, res: Response) => {
       promo_code: promo_code || null,
       status: "unpaid",
       delivery_time: delivery_time || null,
+      delivery_date: delivery_date || null,
       special_instructions: special_instructions || null,
       referral_code_used: referral_code_used || null,
     })

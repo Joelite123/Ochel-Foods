@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/contexts/CartContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { RewardProvider } from "@/contexts/RewardContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import CartPanel from "@/components/ui/CartPanel";
@@ -221,6 +222,16 @@ function Router() {
   );
 }
 
+/** Thin wrapper that reads auth state and activates notifications for admins */
+function NotificationWrapper({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
+  return (
+    <NotificationProvider isAdmin={profile?.role === "admin"}>
+      {children}
+    </NotificationProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -228,11 +239,13 @@ function App() {
         <RewardProvider>
           <CartProvider>
             <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <Router />
-              </WouterRouter>
-              <Toaster />
-              <SonnerToaster position="top-center" richColors />
+              <NotificationWrapper>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                  <Router />
+                </WouterRouter>
+                <Toaster />
+                <SonnerToaster position="top-center" richColors />
+              </NotificationWrapper>
             </TooltipProvider>
           </CartProvider>
         </RewardProvider>

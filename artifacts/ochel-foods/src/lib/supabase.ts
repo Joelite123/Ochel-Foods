@@ -151,6 +151,7 @@ export type DBOrder = {
   // "confirmed" instead of "unpaid" — no manual admin action needed for paid orders.
   status: "unpaid" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_time: string | null;
+  delivery_date: string | null;
   special_instructions: string | null;
   referral_code_used: string | null;
   created_at: string;

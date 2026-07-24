@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
   Clock, Info, Wallet, Tag, Check, X, MapPin, Bike, Store, Ticket, Copy,
+  Calendar,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,7 +16,7 @@ import { DELIVERY_ZONES, formatPrice } from "@/data/menuData";
 import { useMenuData } from "@/hooks/useMenuData";
 import { toast } from "sonner";
 
-/* ─── Delivery time helpers (now also reads from Supabase when available) ─── */
+/* ─── Delivery time helpers ─── */
 const OPEN_HOUR_FALLBACK: Record<number, number> = {
   0: 14, 1: 9, 2: 9, 3: 9, 4: 9, 5: 9, 6: 9,
 };
@@ -28,41 +29,35 @@ function fmt12(h: number, m: number) {
   return `${dh}:${dm} ${period}`;
 }
 
-function getDayLabel(d: Date, today: Date) {
-  const isToday = d.toDateString() === today.toDateString();
-  if (isToday) return "Today";
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return days[d.getDay()];
+function toDateStr(d: Date) {
+  return d.toISOString().split("T")[0];
 }
 
 interface TimeSlot { label: string; value: string }
 
-function generateSlots(
+function generateSlotsForDate(
+  dateStr: string,
   openHours: Record<number, number>,
-  closeHour: number
+  closeHoursMap: Record<number, number>,
+  defaultCloseHour: number,
 ): TimeSlot[] {
+  const date = new Date(dateStr + "T12:00:00"); // noon to avoid DST issues
   const now = new Date();
-  const earliest = new Date(now.getTime() + 60 * 60 * 1000);
+  const isToday = dateStr === toDateStr(now);
+  const dow = date.getDay();
+  const openH = openHours[dow] ?? 9;
+  const closeH = closeHoursMap[dow] ?? defaultCloseHour;
   const slots: TimeSlot[] = [];
 
-  for (let dayOffset = 0; dayOffset <= 2 && slots.length < 20; dayOffset++) {
-    const day = new Date(now);
-    day.setDate(now.getDate() + dayOffset);
-    const openH = openHours[day.getDay()] ?? 9;
-
-    for (let h = openH + 1; h < closeHour; h++) {
-      for (const m of [0, 30]) {
-        const slotTime = new Date(day);
-        slotTime.setHours(h, m, 0, 0);
-        if (slotTime < earliest) continue;
-        slots.push({
-          label: `${getDayLabel(day, now)}, ${fmt12(h, m)}`,
-          value: slotTime.toISOString(),
-        });
-        if (slots.length >= 20) break;
-      }
+  for (let h = openH + 1; h < closeH; h++) {
+    for (const m of [0, 30]) {
+      const slotTime = new Date(date);
+      slotTime.setHours(h, m, 0, 0);
+      if (isToday && slotTime < new Date(now.getTime() + 60 * 60 * 1000)) continue;
+      slots.push({ label: fmt12(h, m), value: slotTime.toISOString() });
       if (slots.length >= 20) break;
     }
+    if (slots.length >= 20) break;
   }
   return slots;
 }
@@ -87,7 +82,7 @@ function getHoursStatus(openHours: Record<number, number>, closeHour: number) {
   if (nowMins < openMins) {
     return {
       open: false,
-      message: `We open at ${fmt12(openH, 0)} today — order now and choose a time slot!`,
+      message: `We open at ${fmt12(openH, 0)} today — order now and choose a date!`,
     };
   }
   const tomorrowOpenH = openHours[(dow + 1) % 7] ?? 9;
@@ -132,11 +127,16 @@ export default function CartPanel() {
   // Load dynamic data from Supabase
   const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneDB[]>([]);
   const [openHours, setOpenHours] = useState<Record<number, number>>(OPEN_HOUR_FALLBACK);
+  const [closeHoursMap, setCloseHoursMap] = useState<Record<number, number>>({});
   const [closeHour, setCloseHour] = useState(CLOSE_HOUR_FALLBACK);
+  const [closedDays, setClosedDays] = useState<Set<number>>(new Set());
+  const [publicHolidayDates, setPublicHolidayDates] = useState<string[]>([]);
   const [referralValid, setReferralValid] = useState<null | boolean>(null);
   const [referralMsg, setReferralMsg] = useState("");
   const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
@@ -144,6 +144,10 @@ export default function CartPanel() {
   const [zoneSearch, setZoneSearch] = useState("");
   const [zoneOpen, setZoneOpen] = useState(false);
   const zoneDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Delivery date (YYYY-MM-DD)
+  const todayStr = toDateStr(new Date());
+  const [deliveryDate, setDeliveryDate] = useState(todayStr);
 
   /* ── Promo code state ── */
   const [activePromos, setActivePromos] = useState<DBPromotion[]>([]);
@@ -165,6 +169,7 @@ export default function CartPanel() {
   }, []);
 
   useEffect(() => {
+    // Delivery zones
     supabase
       .from("delivery_zones")
       .select("*")
@@ -176,21 +181,40 @@ export default function CartPanel() {
           setDeliveryFee((data as DeliveryZoneDB[])[0].price);
         }
       });
+
+    // Operating hours (per day open/close)
     supabase
       .from("operating_hours")
       .select("*")
       .order("day_of_week")
       .then(({ data }) => {
         if (data?.length) {
-          const map: Record<number, number> = {};
-          let maxClose = CLOSE_HOUR_FALLBACK;
+          const openMap: Record<number, number> = {};
+          const closeMap: Record<number, number> = {};
+          const closed = new Set<number>();
           (data as any[]).forEach((h) => {
-            if (!h.is_closed) map[h.day_of_week] = h.open_hour;
-            if (h.close_hour > maxClose) maxClose = h.close_hour;
+            if (h.is_closed) {
+              closed.add(h.day_of_week);
+            } else {
+              openMap[h.day_of_week] = h.open_hour;
+              closeMap[h.day_of_week] = h.close_hour ?? CLOSE_HOUR_FALLBACK;
+            }
           });
-          if (Object.keys(map).length) setOpenHours(map);
+          if (Object.keys(openMap).length) setOpenHours(openMap);
+          setCloseHoursMap(closeMap);
+          setClosedDays(closed);
+          const maxClose = Math.max(...Object.values(closeMap), CLOSE_HOUR_FALLBACK);
           setCloseHour(maxClose);
         }
+      });
+
+    // Public holidays (closed ones only)
+    supabase
+      .from("public_holidays")
+      .select("date")
+      .eq("is_closed", true)
+      .then(({ data }) => {
+        if (data) setPublicHolidayDates((data as { date: string }[]).map((h) => h.date));
       });
   }, []);
 
@@ -203,7 +227,7 @@ export default function CartPanel() {
       .then(({ data }) => {
         if (data) {
           const now = new Date();
-          const valid = (data as DBPromotion[]).filter(p => {
+          const valid = (data as DBPromotion[]).filter((p) => {
             if (p.starts_at && new Date(p.starts_at) > now) return false;
             if (p.ends_at && new Date(p.ends_at) < now) return false;
             return true;
@@ -213,11 +237,31 @@ export default function CartPanel() {
       });
   }, []);
 
-  const slots = useMemo(() => generateSlots(openHours, closeHour), [openHours, closeHour]);
+  // Date validation helpers
+  const isDateClosed = (dateStr: string): boolean => {
+    if (publicHolidayDates.includes(dateStr)) return true;
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    return closedDays.has(dow);
+  };
+
+  const selectedDateClosed = isDateClosed(deliveryDate);
+  const maxDateStr = toDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+
+  // Slots for selected date
+  const slots = useMemo(
+    () => selectedDateClosed ? [] : generateSlotsForDate(deliveryDate, openHours, closeHoursMap, closeHour),
+    [deliveryDate, openHours, closeHoursMap, closeHour, selectedDateClosed]
+  );
+
+  // Reset time slot when date changes
+  useEffect(() => {
+    setForm((f) => ({ ...f, deliveryTime: slots[0]?.value ?? "" }));
+  }, [deliveryDate]);
+
   const hoursStatus = useMemo(() => getHoursStatus(openHours, closeHour), [openHours, closeHour]);
 
   const [drinkNudgeDismissed, setDrinkNudgeDismissed] = useState(false);
-  const [step, setStep] = useState<"cart" | "checkout" | "payment">("cart");
+  const [step, setStep] = useState<"cart" | "checkout" | "success">("cart");
   const [form, setForm] = useState<CheckoutForm>({
     name: profile?.full_name || "",
     phone: profile?.phone || "",
@@ -240,20 +284,18 @@ export default function CartPanel() {
     }
   }, [profile]);
 
-  /* Sync delivery zone to saved profile zone only — no auto-select of first zone */
+  /* Sync delivery zone to saved profile zone only */
   useEffect(() => {
     if (deliveryZones.length && !form.deliveryZoneId) {
       const savedId = (profileRef.current as any)?.default_delivery_zone_id;
-      const savedZone = savedId ? deliveryZones.find(z => z.id === savedId) : null;
+      const savedZone = savedId ? deliveryZones.find((z) => z.id === savedId) : null;
       if (savedZone) {
         setForm((f) => ({ ...f, deliveryZoneId: savedZone.id }));
         setDeliveryFee(savedZone.price);
       }
-      // New users see a blank — they must pick their own area
     }
   }, [deliveryZones]);
 
-  // Unified zone list — Supabase when available, hardcoded fallback otherwise
   const allZones = useMemo(() => {
     if (deliveryZones.length > 0) return deliveryZones.map((z) => ({ id: z.id, label: z.label, price: z.price }));
     return DELIVERY_ZONES.map((z, i) => ({ id: String(i), label: z.label, price: z.price }));
@@ -276,7 +318,11 @@ export default function CartPanel() {
     setZoneOpen(false);
   };
 
-  const handleClose = () => { setIsCartOpen(false); setStep("cart"); };
+  const handleClose = () => {
+    setIsCartOpen(false);
+    // Only reset step if not in success — success screen should stay until dismissed
+    if (step !== "success") setStep("cart");
+  };
 
   /* ── Wallet toggle ── */
   const handleApplyWallet = () => {
@@ -320,18 +366,14 @@ export default function CartPanel() {
     if (promo.discount_type === "percentage") {
       if (promo.applicable_product_ids?.length) {
         const eligibleTotal = items
-          .filter(i => i.productId && promo.applicable_product_ids!.includes(i.productId))
+          .filter((i) => i.productId && promo.applicable_product_ids!.includes(i.productId))
           .reduce((s, i) => s + i.price * i.quantity, 0);
         return Math.round(eligibleTotal * promo.discount_value / 100);
       }
       return Math.round(cartSubtotal * promo.discount_value / 100);
     }
-    if (promo.discount_type === "fixed") {
-      return Math.min(promo.discount_value, cartSubtotal);
-    }
-    if (promo.discount_type === "free_product") {
-      return promo.discount_value;
-    }
+    if (promo.discount_type === "fixed") return Math.min(promo.discount_value, cartSubtotal);
+    if (promo.discount_type === "free_product") return promo.discount_value;
     return 0;
   }
 
@@ -339,26 +381,19 @@ export default function CartPanel() {
     const code = promoCode.trim().toUpperCase();
     if (!code) return;
     setPromoValidating(true);
-    const promo = activePromos.find(p => p.code?.toUpperCase() === code);
+    const promo = activePromos.find((p) => p.code?.toUpperCase() === code);
     if (!promo) {
-      setPromoMsg("Invalid promo code");
-      setPromoMsgValid(false);
-      setPromoApplied(null);
-      setPromoDiscount(0);
+      setPromoMsg("Invalid promo code"); setPromoMsgValid(false);
+      setPromoApplied(null); setPromoDiscount(0);
     } else if (promo.max_uses && promo.uses_count >= promo.max_uses) {
-      setPromoMsg("This promo code has expired (max uses reached)");
-      setPromoMsgValid(false);
-      setPromoApplied(null);
-      setPromoDiscount(0);
+      setPromoMsg("This promo code has expired (max uses reached)"); setPromoMsgValid(false);
+      setPromoApplied(null); setPromoDiscount(0);
     } else if (promo.min_order_amount && subtotal < promo.min_order_amount) {
-      setPromoMsg(`Minimum order of ${formatPrice(promo.min_order_amount)} required`);
-      setPromoMsgValid(false);
-      setPromoApplied(null);
-      setPromoDiscount(0);
+      setPromoMsg(`Minimum order of ${formatPrice(promo.min_order_amount)} required`); setPromoMsgValid(false);
+      setPromoApplied(null); setPromoDiscount(0);
     } else {
       const disc = computePromoDiscount(promo, subtotal);
-      setPromoApplied(promo);
-      setPromoDiscount(disc);
+      setPromoApplied(promo); setPromoDiscount(disc);
       if (promo.discount_type === "free_product") {
         setPromoMsg(`🎁 ${promo.free_product_name || "Free product"} added to your order!`);
       } else {
@@ -370,11 +405,8 @@ export default function CartPanel() {
   };
 
   const handleRemovePromo = () => {
-    setPromoApplied(null);
-    setPromoDiscount(0);
-    setPromoCode("");
-    setPromoMsg("");
-    setPromoMsgValid(null);
+    setPromoApplied(null); setPromoDiscount(0);
+    setPromoCode(""); setPromoMsg(""); setPromoMsgValid(null);
   };
 
   /* ── Copy to clipboard ── */
@@ -395,73 +427,20 @@ export default function CartPanel() {
     if (isPickup) {
       setDeliveryFee(0);
     } else {
-      // Restore fee from selected zone if one is already chosen, else 0
       const saved = allZones.find((z) => z.id === form.deliveryZoneId);
       setDeliveryFee(saved ? saved.price : 0);
     }
   }, [isPickup]);
 
-  /* ── Build WhatsApp message (payment confirmation flow) ── */
-  const buildPaymentWhatsAppMessage = (snapshotItems = items) => {
-    const lines = snapshotItems.map((item) => {
-      let line = `• ${item.name}`;
-      if (item.size) line += ` (${item.size})`;
-      if (item.extras?.length) line += ` + ${item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}`;
-      if (item.removedIngredients?.length) line += ` [NO ${item.removedIngredients.join(", NO ")}]`;
-      line += ` ×${item.quantity} — ${formatPrice(item.price * item.quantity)}`;
-      if (item.note) line += `\n  Note: ${item.note}`;
-      return line;
-    });
-
-    if (promoApplied?.discount_type === "free_product" && promoApplied?.free_product_name) {
-      lines.push(`• 🎁 ${promoApplied.free_product_name} (FREE — promo ${promoApplied.code}) ×1`);
-    }
-
-    const addressLine = isPickup
-      ? `🏪 Pick Up at O'chel Foods Storefront\n📍 ${STORE_ADDRESS}`
-      : `${form.address || "—"}${selectedZone ? ` (${selectedZone.label})` : ""}`;
-
-    return encodeURIComponent(
-      `Hello O'chel Foods 👋\n\n` +
-      `I have completed payment for my order.\n\n` +
-      `Name: ${form.name}\n` +
-      `Phone: ${form.phone}\n\n` +
-      `Delivery Address (or pickup):\n${addressLine}\n\n` +
-      `Order Total:\n${formatPrice(finalTotal)}\n` +
-      (isPickup ? "" : `(incl. ${formatPrice(deliveryFee)} delivery)\n`) +
-      (walletApplied > 0 ? `Wallet discount: -${formatPrice(walletApplied)}\n` : "") +
-      (promoDiscount > 0 ? `Promo (${promoApplied?.code ?? ""}): -${formatPrice(promoDiscount)}\n` : "") +
-      (form.referralCode && referralValid ? `Referral code: ${form.referralCode}\n` : "") +
-      `\n🕐 ${isPickup ? "Pick Up" : "Delivery"} Time: ${selectedSlot?.label ?? "ASAP"}\n` +
-      (form.instructions ? `📝 Notes: ${form.instructions}\n` : "") +
-      `\nOrder Details:\n${lines.join("\n")}\n\n` +
-      `I am sending my payment receipt now.`
-    );
-  };
-
-  /* ── Save order to DB + open WhatsApp (triggered from payment modal) ── */
+  /* ── Place order directly to DB (no WhatsApp popup) ── */
   const handlePlaceOrder = async () => {
     if (!canCheckout) return;
+    setSavingOrder(true);
+    setOrderError(null);
 
-    // Snapshot items BEFORE any state changes
     const snapshotItems = [...items];
-
-    // Open WhatsApp IMMEDIATELY — must happen synchronously on direct user click
-    // before any awaits or browsers will block it as an unsolicited popup.
-    window.open(`https://wa.me/2349056351651?text=${buildPaymentWhatsAppMessage(snapshotItems)}`, "_blank", "noopener,noreferrer");
-
-    // Close cart and clear state right away so the user sees a clean exit
-    clearCart();
-    setWalletApplied(0);
-    handleClose();
-
-    // Snapshot promo before clearing
     const usedPromo = promoApplied;
     const usedPromoDiscount = promoDiscount;
-    handleRemovePromo();
-
-    // Save order to DB — try API server first, fall back to direct Supabase insert
-    setSavingOrder(true);
 
     const orderPayload = {
       user_id: user?.id ?? null,
@@ -477,11 +456,14 @@ export default function CartPanel() {
       referral_wallet_used: walletApplied,
       promo_code: usedPromo?.code ?? null,
       delivery_time: selectedSlot?.label ?? null,
+      delivery_date: deliveryDate,
       special_instructions: form.instructions || null,
       referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
     };
 
-    let savedViaApi = false;
+    let newOrderId: string | null = null;
+
+    // Try API server first
     try {
       const res = await fetch(apiUrl("/api/orders"), {
         method: "POST",
@@ -499,53 +481,66 @@ export default function CartPanel() {
             note: i.note || null,
           })),
         }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(8000),
       });
-      if (res.ok) savedViaApi = true;
+      if (res.ok) {
+        const data = await res.json();
+        newOrderId = data.orderId;
+      }
     } catch { /* API unreachable — fall through */ }
 
-    if (!savedViaApi) {
-      // Fallback: write directly to Supabase (requires anon INSERT policy on orders + order_items tables)
-      // Generate ID client-side so we don't need a SELECT-after-insert (avoids RLS SELECT issues)
+    // Fallback: write directly to Supabase
+    if (!newOrderId) {
       try {
         const orderId = crypto.randomUUID();
         const { error: orderErr } = await supabase
           .from("orders")
           .insert({ id: orderId, ...orderPayload, status: "unpaid" });
 
-        if (orderErr) {
-          console.error("[Checkout] Supabase order insert failed:", orderErr.message);
-        } else if (snapshotItems.length) {
-          const { error: itemsErr } = await supabase.from("order_items").insert(
-            snapshotItems.map((i) => ({
-              order_id: orderId,
-              product_id: i.productId || null,
-              product_name: i.name,
-              size: i.size || null,
-              price: i.price,
-              quantity: i.quantity,
-              extras: i.extras || null,
-              removed_ingredients: i.removedIngredients || null,
-              note: i.note || null,
-            }))
-          );
-          if (itemsErr) console.error("[Checkout] Supabase order_items insert failed:", itemsErr.message);
+        if (!orderErr) {
+          newOrderId = orderId;
+          if (snapshotItems.length) {
+            await supabase.from("order_items").insert(
+              snapshotItems.map((i) => ({
+                order_id: orderId,
+                product_id: i.productId || null,
+                product_name: i.name,
+                size: i.size || null,
+                price: i.price,
+                quantity: i.quantity,
+                extras: i.extras || null,
+                removed_ingredients: i.removedIngredients || null,
+                note: i.note || null,
+              }))
+            );
+          }
         }
-      } catch (err) {
-        console.error("[Checkout] Supabase fallback error:", err);
-      }
+      } catch { /* ignore */ }
     }
 
-    /* Save delivery details to profile for next time */
+    if (!newOrderId) {
+      setOrderError("Failed to place your order. Please try again or contact us on WhatsApp.");
+      setSavingOrder(false);
+      return;
+    }
+
+    // Order saved successfully
+    setSavedOrderId(newOrderId);
+    clearCart();
+    setWalletApplied(0);
+    handleRemovePromo();
+
+    /* Save delivery defaults to profile */
     if (user?.id && !isPickup && form.address) {
-      await supabase.from("profiles").update({
+      supabase.from("profiles").update({
         default_address: form.address,
         default_delivery_zone_id: form.deliveryZoneId || null,
-      }).eq("id", user.id);
+      }).eq("id", user.id).then(() => {});
     }
 
     if (user?.id) refreshRewards();
     setSavingOrder(false);
+    setStep("success");
   };
 
   const handleProceedToCheckout = async () => {
@@ -571,683 +566,669 @@ export default function CartPanel() {
     setStep("checkout");
   };
 
-  const canCheckout = form.name.trim() && form.phone.trim() && (isPickup || (form.address.trim() && form.deliveryZoneId));
+  const canCheckout =
+    form.name.trim() &&
+    form.phone.trim() &&
+    (isPickup || (form.address.trim() && form.deliveryZoneId)) &&
+    !selectedDateClosed &&
+    !savingOrder;
+
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
 
   return (
     <>
-    <Sheet open={isCartOpen} onOpenChange={handleClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" hideClose>
-        <SheetTitle className="sr-only">
-          {step === "cart" ? "Your Cart" : step === "checkout" ? "Checkout" : "Payment Details"}
-        </SheetTitle>
+      <Sheet open={isCartOpen} onOpenChange={handleClose}>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" hideClose>
+          <SheetTitle className="sr-only">
+            {step === "cart" ? "Your Cart" : step === "checkout" ? "Checkout" : "Order Confirmed"}
+          </SheetTitle>
 
-        {/* Header */}
-        <div className="bg-[#E8192C] text-white px-5 py-4 flex items-center gap-3 flex-shrink-0">
-          <button
-            onClick={
-              step === "cart" ? handleClose
-              : step === "checkout" ? () => setStep("cart")
-              : () => setStep("checkout")
-            }
-            className="p-1 hover:bg-white/20 rounded-full transition-colors"
-            aria-label={step === "cart" ? "Close cart" : "Go back"}
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <ShoppingBag className="w-6 h-6" />
-          <h2 className="font-chewy text-xl flex-1">
-            {step === "cart" ? "Your Order" : step === "checkout" ? "Checkout" : "Complete Payment"}
-          </h2>
-          {step === "cart" && items.length > 0 && (
-            <span className="bg-[#FFB800] text-black text-xs font-bold px-2 py-0.5 rounded-full font-[Montserrat]">
-              {items.reduce((s, i) => s + i.quantity, 0)} items
-            </span>
-          )}
-        </div>
-
-        {/* Hours status */}
-        <div className={`px-4 py-2 flex items-center gap-2 text-xs font-[Montserrat] border-b ${
-          hoursStatus.open ? "bg-green-50 border-green-100 text-green-800" : "bg-amber-50 border-amber-100 text-amber-800"
-        }`}>
-          <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>{hoursStatus.message}</span>
-        </div>
-
-        {/* Wallet banner (only for logged-in users with balance) */}
-        {user && walletBalance > 0 && step === "checkout" && (
-          <div className="mx-4 mt-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="text-xs font-semibold font-[Montserrat] text-green-800">
-                  Referral Wallet: {formatPrice(walletBalance)}
-                </p>
-                <p className="text-xs text-green-600 font-[Montserrat]">
-                  {walletApplied > 0 ? `−${formatPrice(walletApplied)} applied` : "Use as discount?"}
-                </p>
-              </div>
-            </div>
+          {/* Header */}
+          <div className="bg-[#E8192C] text-white px-5 py-4 flex items-center gap-3 flex-shrink-0">
             <button
-              onClick={handleApplyWallet}
-              className={`text-xs font-bold font-[Montserrat] px-3 py-1.5 rounded-lg transition-colors ${
-                walletApplied > 0
-                  ? "bg-green-600 text-white hover:bg-green-700"
-                  : "bg-white border border-green-300 text-green-700 hover:bg-green-50"
-              }`}
+              onClick={
+                step === "cart" ? handleClose
+                : step === "checkout" ? () => setStep("cart")
+                : () => { setStep("cart"); setSavedOrderId(null); handleClose(); }
+              }
+              className="p-1 hover:bg-white/20 rounded-full transition-colors"
+              aria-label={step === "cart" ? "Close cart" : "Go back"}
             >
-              {walletApplied > 0 ? "Applied ✓" : "Apply"}
+              <ArrowLeft className="w-5 h-5" />
             </button>
+            <ShoppingBag className="w-6 h-6" />
+            <h2 className="font-chewy text-xl flex-1">
+              {step === "cart" ? "Your Order" : step === "checkout" ? "Checkout" : "Order Confirmed!"}
+            </h2>
+            {step === "cart" && items.length > 0 && (
+              <span className="bg-[#FFB800] text-black text-xs font-bold px-2 py-0.5 rounded-full font-[Montserrat]">
+                {items.reduce((s, i) => s + i.quantity, 0)} items
+              </span>
+            )}
           </div>
-        )}
 
-        {/* Empty state */}
-        {items.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <ShoppingBag className="w-16 h-16 text-gray-200 mb-4" />
-            <h3 className="font-chewy text-2xl text-gray-400 mb-2">Your cart is empty</h3>
-            <p className="text-gray-400 text-sm font-[Montserrat]">Add some delicious items to get started!</p>
-            <button onClick={handleClose}
-              className="mt-6 bg-[#E8192C] text-white px-6 py-3 rounded-xl font-bold font-[Montserrat] hover:bg-[#c8151f]">
-              Browse Menu
-            </button>
-          </div>
-        )}
+          {/* Hours status banner */}
+          {step !== "success" && (
+            <div className={`px-4 py-2 flex items-center gap-2 text-xs font-[Montserrat] border-b ${
+              hoursStatus.open ? "bg-green-50 border-green-100 text-green-800" : "bg-amber-50 border-amber-100 text-amber-800"
+            }`}>
+              <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>{hoursStatus.message}</span>
+            </div>
+          )}
 
-        {/* Cart step */}
-        {items.length > 0 && step === "cart" && (
-          <>
-            <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
-              {items.map((item) => (
-                <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
-                  <div className="flex gap-3">
-                    {item.imageUrl && (
-                      <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-chewy text-base text-gray-900 leading-tight">{item.name}</h4>
-                      {item.size && <p className="text-xs text-gray-500 font-[Montserrat]">{item.size}</p>}
-                      {item.extras?.length > 0 && (
-                        <p className="text-xs text-green-700 font-[Montserrat]">
-                          + {item.extras.map((e) => `${e.name} ×${e.quantity}`).join(", ")}
-                        </p>
+          {/* Wallet banner */}
+          {user && walletBalance > 0 && step === "checkout" && (
+            <div className="mx-4 mt-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-4 h-4 text-green-600 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold font-[Montserrat] text-green-800">
+                    Referral Wallet: {formatPrice(walletBalance)}
+                  </p>
+                  <p className="text-xs text-green-600 font-[Montserrat]">
+                    {walletApplied > 0 ? `−${formatPrice(walletApplied)} applied` : "Use as discount?"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleApplyWallet}
+                className={`text-xs font-bold font-[Montserrat] px-3 py-1.5 rounded-lg transition-colors ${
+                  walletApplied > 0
+                    ? "bg-green-600 text-white hover:bg-green-700"
+                    : "bg-white border border-green-300 text-green-700 hover:bg-green-50"
+                }`}
+              >
+                {walletApplied > 0 ? "Applied ✓" : "Apply"}
+              </button>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {items.length === 0 && step !== "success" && (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+              <ShoppingBag className="w-16 h-16 text-gray-200 mb-4" />
+              <h3 className="font-chewy text-2xl text-gray-400 mb-2">Your cart is empty</h3>
+              <p className="text-gray-400 text-sm font-[Montserrat]">Add some delicious items to get started!</p>
+              <button onClick={handleClose}
+                className="mt-6 bg-[#E8192C] text-white px-6 py-3 rounded-xl font-bold font-[Montserrat] hover:bg-[#c8151f]">
+                Browse Menu
+              </button>
+            </div>
+          )}
+
+          {/* ═══ CART STEP ═══ */}
+          {items.length > 0 && step === "cart" && (
+            <>
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+                {items.map((item) => (
+                  <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-3 shadow-sm">
+                    <div className="flex gap-3">
+                      {item.imageUrl && (
+                        <img src={item.imageUrl} alt={item.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
                       )}
-                      {item.removedIngredients?.length > 0 && (
-                        <p className="text-xs text-orange-600 font-[Montserrat]">No: {item.removedIngredients.join(", ")}</p>
-                      )}
-                      {item.note && <p className="text-xs text-gray-400 font-[Montserrat] italic">"{item.note}"</p>}
-                      <p className="font-chewy text-[#E8192C] mt-0.5">{formatPrice(item.price)}</p>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-chewy text-base text-gray-900 leading-tight">{item.name}</h4>
+                        {item.size && <p className="text-xs text-gray-500 font-[Montserrat]">{item.size}</p>}
+                        {(item.extras?.length ?? 0) > 0 && (
+                          <p className="text-xs text-green-700 font-[Montserrat]">
+                            + {(item.extras ?? []).map((e) => `${e.name} ×${e.quantity}`).join(", ")}
+                          </p>
+                        )}
+                        {(item.removedIngredients?.length ?? 0) > 0 && (
+                          <p className="text-xs text-orange-600 font-[Montserrat]">No: {(item.removedIngredients ?? []).join(", ")}</p>
+                        )}
+                        {item.note && <p className="text-xs text-gray-400 font-[Montserrat] italic">"{item.note}"</p>}
+                        <p className="font-chewy text-[#E8192C] mt-0.5">{formatPrice(item.price)}</p>
+                      </div>
+                      <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-500 h-fit">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-500 h-fit">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                          className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="font-bold text-sm w-5 text-center font-[Montserrat]">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                          className="w-7 h-7 rounded-full bg-[#E8192C] text-white flex items-center justify-center hover:bg-[#c8151f]">
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <span className="font-chewy text-gray-800 text-base">{formatPrice(item.price * item.quantity)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="font-bold text-sm w-5 text-center font-[Montserrat]">{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        className="w-7 h-7 rounded-full bg-[#E8192C] text-white flex items-center justify-center hover:bg-[#c8151f]">
-                        <Plus className="w-3 h-3" />
+                ))}
+
+                {/* ── Drink upsell nudge ── */}
+                {!drinkNudgeDismissed && !items.some((i) => i.category === "drinks") && liveDrinks.length > 0 && (
+                  <div className="mt-1 rounded-2xl border-2 border-[#FFB800] bg-amber-50 p-3">
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-lg">🥤</span>
+                        <p className="font-chewy text-base text-gray-900 leading-tight">
+                          Complete your meal with a drink!
+                        </p>
+                      </div>
+                      <button onClick={() => setDrinkNudgeDismissed(true)} className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5" aria-label="Dismiss">
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
-                    <span className="font-chewy text-gray-800 text-base">{formatPrice(item.price * item.quantity)}</span>
+                    <div className="flex flex-col gap-2">
+                      {liveDrinks.map((drink) => (
+                        <div key={drink.id} className="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-amber-100">
+                          <div className="min-w-0">
+                            <p className="font-[Montserrat] text-sm font-semibold text-gray-800 leading-tight truncate">{drink.name}</p>
+                            <p className="font-chewy text-[#E8192C] text-sm">{formatPrice(drink.basePrice)}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              addItem({ productId: drink.id, name: drink.name, category: "drinks", price: drink.basePrice, quantity: 1, imageUrl: drink.imageUrl });
+                              toast.success(`${drink.name} added!`);
+                            }}
+                            className="flex-shrink-0 bg-[#FFB800] hover:bg-[#e5a600] text-black text-xs font-bold px-3 py-1.5 rounded-lg font-[Montserrat] transition-colors"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between text-sm font-[Montserrat]">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span className="font-semibold">{formatPrice(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-[Montserrat]">
+                    <span className="text-gray-600">Delivery (est.)</span>
+                    <span className="font-semibold text-[#E8192C]">
+                      {deliveryZones.length ? `from ${formatPrice(deliveryZones[0].price)}` : "—"}
+                    </span>
                   </div>
                 </div>
-              ))}
+                <button
+                  onClick={handleProceedToCheckout}
+                  disabled={checkingAvailability}
+                  className="w-full bg-[#E8192C] hover:bg-[#c8151f] disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-opacity">
+                  {checkingAvailability ? "Checking availability…" : "Proceed to Checkout"}
+                </button>
+              </div>
+            </>
+          )}
 
-              {/* ── Drink upsell nudge (only shows currently available drinks) ── */}
-              {!drinkNudgeDismissed && !items.some((i) => i.category === "drinks") && liveDrinks.length > 0 && (
-                <div className="mt-1 rounded-2xl border-2 border-[#FFB800] bg-amber-50 p-3">
-                  <div className="flex items-start justify-between gap-2 mb-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-lg">🥤</span>
-                      <p className="font-chewy text-base text-gray-900 leading-tight">
-                        Complete your meal with a drink!
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setDrinkNudgeDismissed(true)}
-                      className="text-gray-400 hover:text-gray-600 flex-shrink-0 mt-0.5"
-                      aria-label="Dismiss"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {liveDrinks.map((drink) => (
-                      <div key={drink.id} className="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-amber-100">
-                        <div className="min-w-0">
-                          <p className="font-[Montserrat] text-sm font-semibold text-gray-800 leading-tight truncate">
-                            {drink.name}
-                          </p>
-                          <p className="font-chewy text-[#E8192C] text-sm">{formatPrice(drink.basePrice)}</p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            addItem({
-                              productId: drink.id,
-                              name: drink.name,
-                              category: "drinks",
-                              price: drink.basePrice,
-                              quantity: 1,
-                              imageUrl: drink.imageUrl,
-                            });
-                            toast.success(`${drink.name} added!`);
-                          }}
-                          className="flex-shrink-0 bg-[#FFB800] hover:bg-[#e5a600] text-black text-xs font-bold px-3 py-1.5 rounded-lg font-[Montserrat] transition-colors"
-                        >
-                          + Add
-                        </button>
+          {/* ═══ CHECKOUT STEP ═══ */}
+          {items.length > 0 && step === "checkout" && (
+            <>
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+                {/* Order summary */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <h3 className="font-chewy text-lg text-gray-800 mb-3">Order Summary</h3>
+                  <div className="space-y-1.5">
+                    {items.map((item) => (
+                      <div key={item.id} className="flex justify-between text-sm font-[Montserrat]">
+                        <span className="text-gray-600 truncate flex-1 mr-2">
+                          {item.name} ×{item.quantity}
+                          {item.size && <span className="text-gray-400"> ({item.size})</span>}
+                        </span>
+                        <span className="font-semibold flex-shrink-0">{formatPrice(item.price * item.quantity)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
 
-            <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
-              <div className="space-y-2 mb-4">
-                <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold">{formatPrice(subtotal)}</span>
+                {/* ── Delivery / Pick Up toggle ── */}
+                <div className="flex rounded-xl overflow-hidden border-2 border-gray-200">
+                  <button type="button" onClick={() => setIsPickup(false)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors ${!isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                    <Bike className="w-4 h-4" /> Delivery
+                  </button>
+                  <button type="button" onClick={() => setIsPickup(true)}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors border-l-2 border-gray-200 ${isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"}`}>
+                    <Store className="w-4 h-4" /> Pick Up
+                  </button>
                 </div>
-                <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-600">Delivery (est.)</span>
-                  <span className="font-semibold text-[#E8192C]">
-                    {deliveryZones.length ? `from ${formatPrice(deliveryZones[0].price)}` : "—"}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={handleProceedToCheckout}
-                disabled={checkingAvailability}
-                className="w-full bg-[#E8192C] hover:bg-[#c8151f] disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-opacity">
-                {checkingAvailability ? "Checking availability…" : "Proceed to Checkout"}
-              </button>
-            </div>
-          </>
-        )}
 
-        {/* Checkout step */}
-        {items.length > 0 && step === "checkout" && (
-          <>
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-              {/* Order summary */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <h3 className="font-chewy text-lg text-gray-800 mb-3">Order Summary</h3>
-                <div className="space-y-1.5">
-                  {items.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm font-[Montserrat]">
-                      <span className="text-gray-600 truncate flex-1 mr-2">
-                        {item.name} ×{item.quantity}
-                        {item.size && <span className="text-gray-400"> ({item.size})</span>}
-                      </span>
-                      <span className="font-semibold flex-shrink-0">{formatPrice(item.price * item.quantity)}</span>
+                {/* Pick Up location banner */}
+                {isPickup && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-3">
+                    <MapPin className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-bold font-[Montserrat] text-green-800">Pick Up at O'chel Foods Storefront</p>
+                      <p className="text-xs font-[Montserrat] text-green-700 mt-0.5">{STORE_ADDRESS}</p>
+                      <p className="text-xs font-[Montserrat] text-green-600 mt-1">No delivery fee — come collect your order!</p>
                     </div>
-                  ))}
-                </div>
-                {selectedSlot && (
-                  <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 text-sm font-[Montserrat]">
-                    <Clock className="w-4 h-4 text-[#E8192C] flex-shrink-0" />
-                    <span className="text-gray-500">Delivery time:</span>
-                    <span className="font-semibold text-gray-800">{selectedSlot.label}</span>
                   </div>
                 )}
-              </div>
 
-              {/* ── Delivery / Pick Up toggle ── */}
-              <div className="flex rounded-xl overflow-hidden border-2 border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setIsPickup(false)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors ${
-                    !isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"
-                  }`}
-                >
-                  <Bike className="w-4 h-4" /> Delivery
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsPickup(true)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold font-[Montserrat] transition-colors border-l-2 border-gray-200 ${
-                    isPickup ? "bg-[#E8192C] text-white" : "bg-white text-gray-500 hover:bg-gray-50"
-                  }`}
-                >
-                  <Store className="w-4 h-4" /> Pick Up
-                </button>
-              </div>
-
-              {/* Pick Up location banner */}
-              {isPickup && (
-                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-start gap-3">
-                  <MapPin className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-bold font-[Montserrat] text-green-800">Pick Up at O'chel Foods Storefront</p>
-                    <p className="text-xs font-[Montserrat] text-green-700 mt-0.5">{STORE_ADDRESS}</p>
-                    <p className="text-xs font-[Montserrat] text-green-600 mt-1">No delivery fee — come collect your order!</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Preferred time */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  {isPickup ? "Preferred Pick Up Time" : "Preferred Delivery Time"}
-                </label>
-                {slots.length === 0 ? (
-                  <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
-                    No slots available right now. Check back during operating hours.
-                  </p>
-                ) : (
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <select value={form.deliveryTime} onChange={(e) => setForm((f) => ({ ...f, deliveryTime: e.target.value }))}
-                      className={`${fieldClass} pl-9 pr-10 appearance-none`}>
-                      {slots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                  </div>
-                )}
-                <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
-                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-700 font-[Montserrat]">
-                    {isPickup
-                      ? "Orders are typically ready within 30 minutes. Please arrive at your chosen time."
-                      : "Orders are typically prepared within 30 minutes. Time shown includes prep and delivery."}
-                  </p>
-                </div>
-              </div>
-
-              {/* Delivery zone — only shown for delivery */}
-              {!isPickup && (
+                {/* ── Delivery Date ── */}
                 <div>
-                  <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
-                  <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
-                  <div className="relative" ref={zoneDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => { setZoneOpen((o) => !o); setZoneSearch(""); }}
-                      className={`${fieldClass} pr-10 text-left flex items-center justify-between`}
-                    >
-                      <span className={selectedZone ? "text-gray-800" : "text-gray-400"}>
-                        {selectedZone ? `${selectedZone.label} — ${formatPrice(selectedZone.price)}` : "Select delivery area…"}
-                      </span>
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${zoneOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    {zoneOpen && (
-                      <div className="absolute z-50 mt-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                        <div className="p-2 border-b border-gray-100">
-                          <input
-                            autoFocus
-                            type="text"
-                            placeholder="Search location…"
-                            value={zoneSearch}
-                            onChange={(e) => setZoneSearch(e.target.value)}
-                            className="w-full px-3 py-2 text-sm font-[Montserrat] border border-gray-200 rounded-lg focus:outline-none focus:border-[#E8192C]"
-                          />
-                        </div>
-                        <ul className="max-h-52 overflow-y-auto">
-                          {filteredZones.length === 0 ? (
-                            <li className="px-4 py-3 text-sm text-gray-400 font-[Montserrat]">No locations found</li>
-                          ) : (
-                            filteredZones.map((z) => (
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    {isPickup ? "Pick Up Date" : "Delivery Date"} *
+                  </label>
+                  <input
+                    type="date"
+                    min={todayStr}
+                    max={maxDateStr}
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    className={`${fieldClass} cursor-pointer`}
+                  />
+                  {selectedDateClosed && (
+                    <div className="mt-1.5 flex items-center gap-1.5 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2 text-xs text-orange-700 font-[Montserrat]">
+                      <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                      This date is not available (closed or public holiday). Please choose another date.
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Preferred Time ── */}
+                {!selectedDateClosed && (
+                  <div>
+                    <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                      {isPickup ? "Preferred Pick Up Time" : "Preferred Delivery Time"}
+                    </label>
+                    {slots.length === 0 ? (
+                      <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
+                        No time slots available for this date. Check back during operating hours.
+                      </p>
+                    ) : (
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <select value={form.deliveryTime} onChange={(e) => setForm((f) => ({ ...f, deliveryTime: e.target.value }))}
+                          className={`${fieldClass} pl-9 pr-10 appearance-none`}>
+                          {slots.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    )}
+                    <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                      <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-blue-700 font-[Montserrat]">
+                        {isPickup
+                          ? "Orders are typically ready within 30 minutes. Please arrive at your chosen time."
+                          : "Orders are typically prepared within 30 minutes. Time shown includes prep and delivery."}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivery zone — only shown for delivery */}
+                {!isPickup && (
+                  <div>
+                    <label className="font-chewy text-lg text-gray-800 mb-2 block">Delivery Area</label>
+                    <p className="text-xs text-gray-400 font-[Montserrat] mb-2">Select your zone for an instant delivery cost estimate</p>
+                    <div className="relative" ref={zoneDropdownRef}>
+                      <button type="button" onClick={() => { setZoneOpen((o) => !o); setZoneSearch(""); }}
+                        className={`${fieldClass} pr-10 text-left flex items-center justify-between`}>
+                        <span className={selectedZone ? "text-gray-800" : "text-gray-400"}>
+                          {selectedZone ? `${selectedZone.label} — ${formatPrice(selectedZone.price)}` : "Select delivery area…"}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${zoneOpen ? "rotate-180" : ""}`} />
+                      </button>
+                      {zoneOpen && (
+                        <div className="absolute z-50 mt-1 w-full bg-white border-2 border-gray-200 rounded-xl shadow-lg overflow-hidden">
+                          <div className="p-2 border-b border-gray-100">
+                            <input autoFocus type="text" placeholder="Search location…" value={zoneSearch}
+                              onChange={(e) => setZoneSearch(e.target.value)}
+                              className="w-full px-3 py-2 text-sm font-[Montserrat] border border-gray-200 rounded-lg focus:outline-none focus:border-[#E8192C]" />
+                          </div>
+                          <ul className="max-h-52 overflow-y-auto">
+                            {filteredZones.length === 0 ? (
+                              <li className="px-4 py-3 text-sm text-gray-400 font-[Montserrat]">No locations found</li>
+                            ) : filteredZones.map((z) => (
                               <li key={z.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleZoneChange(z.id, z.price)}
-                                  className={`w-full text-left px-4 py-2.5 text-sm font-[Montserrat] flex items-center justify-between hover:bg-red-50 transition-colors ${form.deliveryZoneId === z.id ? "bg-red-50 text-[#E8192C] font-semibold" : "text-gray-700"}`}
-                                >
+                                <button type="button" onClick={() => handleZoneChange(z.id, z.price)}
+                                  className={`w-full text-left px-4 py-2.5 text-sm font-[Montserrat] flex items-center justify-between hover:bg-red-50 transition-colors ${form.deliveryZoneId === z.id ? "bg-red-50 text-[#E8192C] font-semibold" : "text-gray-700"}`}>
                                   <span>{z.label}</span>
                                   <span className="font-chewy text-base ml-2 flex-shrink-0">{formatPrice(z.price)}</span>
                                 </button>
                               </li>
-                            ))
-                          )}
-                        </ul>
-                      </div>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
+                      <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
+                      <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Full Name */}
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">Full Name *</label>
+                  <input type="text" placeholder="Enter your full name" value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className={fieldClass} />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">Phone Number *</label>
+                  <input type="tel" placeholder="+234 800 000 0000" value={form.phone}
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={fieldClass} />
+                </div>
+
+                {/* Email (optional) */}
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                    Email <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  </label>
+                  <input type="email" placeholder="your@email.com" value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={fieldClass} />
+                </div>
+
+                {/* Address — only for delivery */}
+                {!isPickup && (
+                  <div>
+                    <label className="font-chewy text-lg text-gray-800 mb-1 block">Delivery Address *</label>
+                    <textarea placeholder="Enter your full delivery address..." value={form.address}
+                      onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                      className={`${fieldClass} resize-none`} rows={3} />
+                    {!user && (
+                      <p className="mt-1.5 text-xs text-gray-400 font-[Montserrat]">
+                        <a href="/login" className="text-[#E8192C] font-semibold hover:underline">Sign in</a>
+                        {" "}to save your address &amp; details for next time
+                      </p>
+                    )}
+                    {user && (
+                      <p className="mt-1.5 text-xs text-green-600 font-[Montserrat] flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Your details will be saved automatically
+                      </p>
                     )}
                   </div>
-                  <div className="mt-2 flex items-center justify-between bg-red-50 border border-red-100 rounded-xl px-4 py-2">
-                    <span className="text-sm font-[Montserrat] text-gray-600">Delivery fee</span>
-                    <span className="font-chewy text-[#E8192C] text-lg">{formatPrice(deliveryFee)}</span>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {/* Full Name */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">Full Name *</label>
-                <input type="text" placeholder="Enter your full name" value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className={fieldClass} />
-              </div>
-
-              {/* Phone */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">Phone Number *</label>
-                <input type="tel" placeholder="+234 800 000 0000" value={form.phone}
-                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} className={fieldClass} />
-              </div>
-
-              {/* Email (optional) */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Email <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
-                </label>
-                <input type="email" placeholder="your@email.com" value={form.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} className={fieldClass} />
-              </div>
-
-              {/* Address — only for delivery */}
-              {!isPickup && (
+                {/* Special instructions */}
                 <div>
-                  <label className="font-chewy text-lg text-gray-800 mb-1 block">Delivery Address *</label>
-                  <textarea placeholder="Enter your full delivery address..." value={form.address}
-                    onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                    className={`${fieldClass} resize-none`} rows={3} />
-                  {/* Guest signup nudge */}
-                  {!user && (
-                    <p className="mt-1.5 text-xs text-gray-400 font-[Montserrat]">
-                      <a href="/login" className="text-[#E8192C] font-semibold hover:underline">Sign in</a>
-                      {" "}to save your address &amp; details for next time
-                    </p>
-                  )}
-                  {user && (
-                    <p className="mt-1.5 text-xs text-green-600 font-[Montserrat] flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Your details will be saved automatically
-                    </p>
-                  )}
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                    Special Instructions <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  </label>
+                  <textarea placeholder="Any other notes..." value={form.instructions}
+                    onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
+                    className={`${fieldClass} resize-none`} rows={2} />
                 </div>
-              )}
 
-              {/* Special instructions */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Special Instructions <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
-                </label>
-                <textarea placeholder="Any other notes..." value={form.instructions}
-                  onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
-                  className={`${fieldClass} resize-none`} rows={2} />
-              </div>
-
-              {/* ── Promo code ── */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Promo Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
-                </label>
-                {promoApplied ? (
-                  <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Ticket className="w-4 h-4 text-purple-600 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold font-[Montserrat] text-purple-800">
-                          {promoApplied.code}
-                        </p>
-                        <p className="text-xs font-[Montserrat] text-purple-600">{promoMsg}</p>
+                {/* ── Promo code ── */}
+                <div>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                    Promo Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  </label>
+                  {promoApplied ? (
+                    <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Ticket className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold font-[Montserrat] text-purple-800">{promoApplied.code}</p>
+                          <p className="text-xs font-[Montserrat] text-purple-600">{promoMsg}</p>
+                        </div>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRemovePromo}
-                      className="text-xs font-bold font-[Montserrat] text-purple-600 hover:text-purple-800 px-2 py-1 rounded-lg hover:bg-purple-100 transition-colors"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                        <input
-                          type="text"
-                          placeholder="Enter promo code"
-                          value={promoCode}
-                          onChange={(e) => {
-                            setPromoCode(e.target.value.toUpperCase());
-                            setPromoMsg("");
-                            setPromoMsgValid(null);
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
-                          className={`${fieldClass} pl-10 uppercase`}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleApplyPromo}
-                        disabled={!promoCode.trim() || promoValidating}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40 transition-colors"
-                      >
-                        {promoValidating ? "…" : "Apply"}
+                      <button type="button" onClick={handleRemovePromo}
+                        className="text-xs font-bold font-[Montserrat] text-purple-600 hover:text-purple-800 px-2 py-1 rounded-lg hover:bg-purple-100 transition-colors">
+                        Remove
                       </button>
                     </div>
-                    {promoMsg && (
-                      <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${promoMsgValid ? "text-green-600" : "text-red-500"}`}>
-                        {promoMsgValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                        {promoMsg}
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                          <input type="text" placeholder="Enter promo code" value={promoCode}
+                            onChange={(e) => { setPromoCode(e.target.value.toUpperCase()); setPromoMsg(""); setPromoMsgValid(null); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleApplyPromo()}
+                            className={`${fieldClass} pl-10 uppercase`} />
+                        </div>
+                        <button type="button" onClick={handleApplyPromo} disabled={!promoCode.trim() || promoValidating}
+                          className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40 transition-colors">
+                          {promoValidating ? "…" : "Apply"}
+                        </button>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Referral code */}
-              <div>
-                <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                  Referral Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Enter a referral code"
-                      value={form.referralCode}
-                      onChange={(e) => {
-                        setForm((f) => ({ ...f, referralCode: e.target.value.toUpperCase() }));
-                        setReferralValid(null);
-                      }}
-                      className={`${fieldClass} pl-10 uppercase`}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleValidateReferral}
-                    disabled={!form.referralCode.trim() || validatingCode}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40"
-                  >
-                    {validatingCode ? "…" : "Apply"}
-                  </button>
-                </div>
-                {referralMsg && (
-                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${referralValid ? "text-green-600" : "text-red-500"}`}>
-                    {referralValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                    {referralMsg}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Checkout footer */}
-            <div className="border-t border-gray-100 bg-gray-50 px-5 pt-3 pb-4 flex-shrink-0">
-              {/* Collapsible breakdown — tap total row to expand */}
-              <button
-                type="button"
-                onClick={() => setSummaryExpanded((v) => !v)}
-                className="w-full flex items-center justify-between mb-2"
-              >
-                <span className="font-chewy text-lg text-gray-900">
-                  Total: {formatPrice(finalTotal)}
-                </span>
-                <span className="flex items-center gap-1 text-xs text-gray-400 font-[Montserrat]">
-                  {summaryExpanded ? "Hide" : "See breakdown"}
-                  <ChevronDown className={`w-4 h-4 transition-transform ${summaryExpanded ? "rotate-180" : ""}`} />
-                </span>
-              </button>
-
-              {summaryExpanded && (
-                <div className="space-y-1.5 mb-3 pb-3 border-b border-gray-200">
-                  <div className="flex justify-between text-sm font-[Montserrat]">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="font-semibold">{formatPrice(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm font-[Montserrat]">
-                    <span className="text-gray-500">Delivery</span>
-                    <span className="font-semibold">{formatPrice(deliveryFee)}</span>
-                  </div>
-                  {walletApplied > 0 && (
-                    <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
-                      <span>Wallet discount</span>
-                      <span className="font-semibold">−{formatPrice(walletApplied)}</span>
-                    </div>
-                  )}
-                  {promoApplied?.discount_type === "free_product" && promoApplied?.free_product_name && (
-                    <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
-                      <span>🎁 {promoApplied.free_product_name} (FREE)</span>
-                      <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
-                    </div>
-                  )}
-                  {promoDiscount > 0 && promoApplied?.discount_type !== "free_product" && (
-                    <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
-                      <span>Promo {promoApplied?.code ? `(${promoApplied.code})` : "discount"}</span>
-                      <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
-                    </div>
-                  )}
-                  {selectedSlot && (
-                    <div className="flex justify-between text-sm font-[Montserrat]">
-                      <span className="text-gray-500">Delivery time</span>
-                      <span className="font-semibold text-gray-700 text-right max-w-[55%]">{selectedSlot.label}</span>
-                    </div>
+                      {promoMsg && (
+                        <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${promoMsgValid ? "text-green-600" : "text-red-500"}`}>
+                          {promoMsgValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                          {promoMsg}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              )}
 
-              {!canCheckout && (
-                <p className="text-xs text-gray-400 font-[Montserrat] text-center mb-2">
-                  {!form.name.trim() || !form.phone.trim()
-                    ? "Fill in Name & Phone to continue"
-                    : !isPickup && !form.deliveryZoneId
-                    ? "Please select your Delivery Area to continue"
-                    : "Fill in your delivery Address to continue"}
-                </p>
-              )}
-
-              <button
-                onClick={() => setStep("payment")}
-                disabled={!canCheckout}
-                className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
-                  canCheckout
-                    ? "bg-[#E8192C] hover:bg-[#c8151f] text-white"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                }`}
-              >
-                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current flex-shrink-0">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                Process Payment
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Payment step */}
-        {items.length > 0 && step === "payment" && (
-          <>
-            <div className="flex-1 overflow-y-auto">
-              {/* Order total banner */}
-              <div className="bg-gradient-to-br from-red-50 to-orange-50 border-b border-red-100 px-5 py-5 flex items-center justify-between">
+                {/* Referral code */}
                 <div>
-                  <p className="text-xs font-[Montserrat] text-gray-500 uppercase tracking-wide mb-0.5">Order Total</p>
-                  <p className="font-chewy text-4xl text-[#E8192C] leading-tight">{formatPrice(finalTotal)}</p>
-                </div>
-                <button
-                  onClick={() => handleCopy("total", String(finalTotal))}
-                  className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-2 rounded-xl border transition-all ${
-                    copiedField === "total"
-                      ? "bg-green-100 border-green-300 text-green-700"
-                      : "bg-white border-gray-200 text-gray-600 hover:border-[#E8192C] hover:text-[#E8192C]"
-                  }`}
-                >
-                  {copiedField === "total" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedField === "total" ? "Copied ✓" : "Copy amount"}
-                </button>
-              </div>
-
-              {/* Bank details */}
-              <div className="px-5 pt-5 pb-2">
-                <p className="text-xs font-[Montserrat] font-bold text-gray-400 uppercase tracking-widest mb-3">Bank Details</p>
-                {[
-                  { key: "bankName",      label: "Bank Name",      value: BANK_DETAILS.bankName },
-                  { key: "accountName",   label: "Account Name",   value: BANK_DETAILS.accountName },
-                  { key: "accountNumber", label: "Account Number", value: BANK_DETAILS.accountNumber },
-                ].map(({ key, label, value }) => (
-                  <div key={key} className="flex items-center justify-between py-3.5 border-b border-gray-100 last:border-0">
-                    <div>
-                      <p className="text-xs text-gray-400 font-[Montserrat]">{label}</p>
-                      <p className={`font-[Montserrat] mt-0.5 ${key === "accountNumber" ? "font-chewy text-2xl text-gray-900 tracking-wider" : "font-semibold text-sm text-gray-800"}`}>
-                        {value}
-                      </p>
+                  <label className="font-chewy text-lg text-gray-800 mb-1 block">
+                    Referral Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      <input type="text" placeholder="Enter a referral code" value={form.referralCode}
+                        onChange={(e) => { setForm((f) => ({ ...f, referralCode: e.target.value.toUpperCase() })); setReferralValid(null); }}
+                        className={`${fieldClass} pl-10 uppercase`} />
                     </div>
-                    <button
-                      onClick={() => handleCopy(key, value)}
-                      className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-2 rounded-xl border transition-all flex-shrink-0 ml-3 ${
-                        copiedField === key
-                          ? "bg-green-100 border-green-300 text-green-700"
-                          : "bg-gray-50 border-gray-200 text-gray-500 hover:border-[#E8192C] hover:text-[#E8192C]"
-                      }`}
-                    >
-                      {copiedField === key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiedField === key ? "Copied ✓" : "Copy"}
+                    <button type="button" onClick={handleValidateReferral} disabled={!form.referralCode.trim() || validatingCode}
+                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40">
+                      {validatingCode ? "…" : "Apply"}
                     </button>
                   </div>
-                ))}
-              </div>
+                  {referralMsg && (
+                    <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${referralValid ? "text-green-600" : "text-red-500"}`}>
+                      {referralValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                      {referralMsg}
+                    </div>
+                  )}
+                </div>
 
-              {/* Steps */}
-              <div className="mx-5 my-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-4">
-                <p className="text-xs font-bold font-[Montserrat] text-amber-800 uppercase tracking-wide mb-3">How to pay</p>
-                {[
-                  "Copy the account details above.",
-                  "Transfer the exact amount using your banking app.",
-                  "Come back and tap \"I've Made Payment\" below.",
-                  "When WhatsApp opens, send your payment receipt.",
-                ].map((instruction, i) => (
-                  <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
-                    <span className="w-6 h-6 rounded-full bg-[#E8192C] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 font-[Montserrat]">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm font-[Montserrat] text-amber-900 leading-relaxed">{instruction}</p>
+                {/* Error message */}
+                {orderError && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700 font-[Montserrat]">
+                    {orderError}
+                    <a href="https://wa.me/2349056351651" target="_blank" rel="noopener noreferrer"
+                      className="block mt-1 text-green-600 font-semibold underline">Contact us on WhatsApp</a>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
 
-            {/* CTA footer */}
-            <div className="border-t border-gray-100 bg-gray-50 px-5 pt-4 pb-5 flex-shrink-0">
-              <button
-                onClick={handlePlaceOrder}
-                disabled={savingOrder}
-                className="w-full flex items-center justify-center gap-2.5 bg-[#25D366] hover:bg-[#1ebe5d] disabled:opacity-60 text-white font-bold py-4 px-6 rounded-2xl font-[Montserrat] text-base transition-colors"
-              >
-                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current flex-shrink-0">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.886 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                </svg>
-                {savingOrder ? "Opening WhatsApp…" : "I've Made Payment"}
-              </button>
-              <button
-                onClick={() => setStep("checkout")}
-                className="w-full mt-2 text-sm text-gray-400 hover:text-gray-600 font-[Montserrat] py-2 transition-colors"
-              >
-                Go back to checkout
-              </button>
-            </div>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
+              {/* Checkout footer */}
+              <div className="border-t border-gray-100 bg-gray-50 px-5 pt-3 pb-4 flex-shrink-0">
+                {/* Collapsible breakdown */}
+                <button type="button" onClick={() => setSummaryExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between mb-2">
+                  <span className="font-chewy text-lg text-gray-900">
+                    Total: {formatPrice(finalTotal)}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-gray-400 font-[Montserrat]">
+                    {summaryExpanded ? "Hide" : "See breakdown"}
+                    <ChevronDown className={`w-4 h-4 transition-transform ${summaryExpanded ? "rotate-180" : ""}`} />
+                  </span>
+                </button>
+
+                {summaryExpanded && (
+                  <div className="space-y-1.5 mb-3 pb-3 border-b border-gray-200">
+                    <div className="flex justify-between text-sm font-[Montserrat]">
+                      <span className="text-gray-500">Subtotal</span>
+                      <span className="font-semibold">{formatPrice(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm font-[Montserrat]">
+                      <span className="text-gray-500">Delivery</span>
+                      <span className="font-semibold">{formatPrice(deliveryFee)}</span>
+                    </div>
+                    {walletApplied > 0 && (
+                      <div className="flex justify-between text-sm font-[Montserrat] text-green-600">
+                        <span>Wallet discount</span>
+                        <span className="font-semibold">−{formatPrice(walletApplied)}</span>
+                      </div>
+                    )}
+                    {promoDiscount > 0 && (
+                      <div className="flex justify-between text-sm font-[Montserrat] text-purple-600">
+                        <span>Promo {promoApplied?.code ? `(${promoApplied.code})` : "discount"}</span>
+                        <span className="font-semibold">−{formatPrice(promoDiscount)}</span>
+                      </div>
+                    )}
+                    {deliveryDate && (
+                      <div className="flex justify-between text-sm font-[Montserrat]">
+                        <span className="text-gray-500">Delivery date</span>
+                        <span className="font-semibold text-gray-700">
+                          {new Date(deliveryDate + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                          {selectedSlot ? ` at ${selectedSlot.label}` : ""}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!canCheckout && (
+                  <p className="text-xs text-gray-400 font-[Montserrat] text-center mb-2">
+                    {selectedDateClosed
+                      ? "Selected date is unavailable — please choose another date"
+                      : !form.name.trim() || !form.phone.trim()
+                      ? "Fill in Name & Phone to continue"
+                      : !isPickup && !form.deliveryZoneId
+                      ? "Please select your Delivery Area to continue"
+                      : "Fill in your delivery Address to continue"}
+                  </p>
+                )}
+
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={!canCheckout || savingOrder}
+                  className={`w-full flex items-center justify-center gap-2 font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors ${
+                    canCheckout && !savingOrder
+                      ? "bg-[#E8192C] hover:bg-[#c8151f] text-white"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  }`}
+                >
+                  {savingOrder ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Placing Order…
+                    </>
+                  ) : (
+                    "Place Order"
+                  )}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ═══ SUCCESS STEP ═══ */}
+          {step === "success" && (
+            <>
+              <div className="flex-1 overflow-y-auto">
+                {/* Success hero */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-b border-green-100 px-5 py-8 flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4 shadow-lg">
+                    <Check className="w-8 h-8 text-white stroke-[3]" />
+                  </div>
+                  <h2 className="font-chewy text-2xl text-gray-900 mb-1">Order Placed!</h2>
+                  <p className="text-gray-500 text-sm font-[Montserrat] max-w-xs">
+                    We've received your order. Please complete payment below to confirm.
+                  </p>
+                  {savedOrderId && (
+                    <div className="mt-3 bg-white border border-green-200 rounded-xl px-5 py-2.5 shadow-sm">
+                      <p className="text-xs text-gray-400 font-[Montserrat]">Order number</p>
+                      <p className="font-mono font-bold text-xl text-[#E8192C] tracking-wider">
+                        #{savedOrderId.slice(0, 8).toUpperCase()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Payment section */}
+                <div className="px-5 pt-5 pb-2">
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-4 mb-5">
+                    <p className="text-xs font-bold font-[Montserrat] text-amber-800 uppercase tracking-wide mb-2">
+                      Complete your payment
+                    </p>
+                    {[
+                      "Copy the account details below.",
+                      "Transfer the exact amount using your banking app.",
+                      "We'll start preparing your order as soon as payment is confirmed.",
+                    ].map((instruction, i) => (
+                      <div key={i} className="flex items-start gap-3 mb-2 last:mb-0">
+                        <span className="w-5 h-5 rounded-full bg-[#E8192C] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5 font-[Montserrat]">
+                          {i + 1}
+                        </span>
+                        <p className="text-sm font-[Montserrat] text-amber-900 leading-relaxed">{instruction}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Amount */}
+                  <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-xs text-gray-400 font-[Montserrat]">Amount to transfer</p>
+                      <p className="font-chewy text-3xl text-[#E8192C]">{formatPrice(finalTotal)}</p>
+                    </div>
+                    <button
+                      onClick={() => handleCopy("amount", String(finalTotal))}
+                      className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-2 rounded-xl border transition-all ${
+                        copiedField === "amount"
+                          ? "bg-green-100 border-green-300 text-green-700"
+                          : "bg-white border-gray-200 text-gray-600 hover:border-[#E8192C] hover:text-[#E8192C]"
+                      }`}
+                    >
+                      {copiedField === "amount" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedField === "amount" ? "Copied ✓" : "Copy amount"}
+                    </button>
+                  </div>
+
+                  {/* Bank details */}
+                  <p className="text-xs font-bold font-[Montserrat] text-gray-400 uppercase tracking-widest mb-3">Bank Details</p>
+                  {[
+                    { key: "bankName", label: "Bank Name", value: BANK_DETAILS.bankName },
+                    { key: "accountName", label: "Account Name", value: BANK_DETAILS.accountName },
+                    { key: "accountNumber", label: "Account Number", value: BANK_DETAILS.accountNumber },
+                  ].map(({ key, label, value }) => (
+                    <div key={key} className="flex items-center justify-between py-3.5 border-b border-gray-100 last:border-0">
+                      <div>
+                        <p className="text-xs text-gray-400 font-[Montserrat]">{label}</p>
+                        <p className={`font-[Montserrat] mt-0.5 ${key === "accountNumber" ? "font-chewy text-2xl text-gray-900 tracking-wider" : "font-semibold text-sm text-gray-800"}`}>
+                          {value}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleCopy(key, value)}
+                        className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-2 rounded-xl border transition-all flex-shrink-0 ml-3 ${
+                          copiedField === key
+                            ? "bg-green-100 border-green-300 text-green-700"
+                            : "bg-gray-50 border-gray-200 text-gray-500 hover:border-[#E8192C] hover:text-[#E8192C]"
+                        }`}
+                      >
+                        {copiedField === key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedField === key ? "Copied ✓" : "Copy"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 flex-shrink-0">
+                <button
+                  onClick={() => { setStep("cart"); setSavedOrderId(null); setIsCartOpen(false); }}
+                  className="w-full bg-[#E8192C] hover:bg-[#c8151f] text-white font-bold py-3 px-6 rounded-xl font-[Montserrat] transition-colors mb-2"
+                >
+                  Return to Menu
+                </button>
+                <p className="text-center text-xs text-gray-400 font-[Montserrat]">
+                  Questions?{" "}
+                  <a href="https://wa.me/2349056351651" target="_blank" rel="noopener noreferrer"
+                    className="text-green-600 font-semibold hover:underline">
+                    Chat us on WhatsApp
+                  </a>
+                </p>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

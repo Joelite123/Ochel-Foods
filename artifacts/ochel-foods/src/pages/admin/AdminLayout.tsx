@@ -1,10 +1,11 @@
-import { useState, ReactNode } from "react";
+import { useState, useEffect, ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Gift,
   MapPin, Tag, Clock, Mail, BarChart2, Menu, X, LogOut, ChevronRight, Layers,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
 const navItems = [
@@ -27,6 +28,12 @@ export default function AdminLayout({ children }: Props) {
   const [location] = useLocation();
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { unreadCount } = useNotifications();
+
+  // Reset unread badge when navigating to orders page
+  useEffect(() => {
+    // The AdminOrders component calls markAllRead on mount
+  }, [location]);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -67,6 +74,9 @@ export default function AdminLayout({ children }: Props) {
         <nav className="flex-1 overflow-y-auto px-3 pb-4 space-y-0.5">
           {navItems.map(({ href, label, icon: Icon, tip }) => {
             const active = location === href || (href !== "/admin" && location.startsWith(href));
+            const isOrders = href === "/admin/orders";
+            const showBadge = isOrders && unreadCount > 0 && location !== href;
+
             return (
               <Link key={href} href={href}>
                 <div
@@ -80,7 +90,14 @@ export default function AdminLayout({ children }: Props) {
                 >
                   <Icon className="w-4 h-4 flex-shrink-0" />
                   <span className="text-sm font-[Montserrat] font-medium flex-1">{label}</span>
-                  {active && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
+                  {showBadge && (
+                    <span className="ml-auto bg-[#E8192C] text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                  {active && !showBadge && (
+                    <ChevronRight className="w-3.5 h-3.5 opacity-70" />
+                  )}
                 </div>
               </Link>
             );
@@ -125,6 +142,15 @@ export default function AdminLayout({ children }: Props) {
               {navItems.find((n) => location === n.href || (n.href !== "/admin" && location.startsWith(n.href)))?.tip ?? ""}
             </p>
           </div>
+          {/* Notification indicator in top bar for mobile */}
+          {unreadCount > 0 && location !== "/admin/orders" && (
+            <Link href="/admin/orders">
+              <div className="flex items-center gap-1.5 bg-[#E8192C] text-white text-xs font-bold font-[Montserrat] px-2.5 py-1.5 rounded-xl cursor-pointer hover:bg-[#c8151f] transition-colors">
+                <ShoppingBag className="w-3.5 h-3.5" />
+                {unreadCount} new order{unreadCount !== 1 ? "s" : ""}
+              </div>
+            </Link>
+          )}
           <Link href="/">
             <span className="text-sm text-[#E8192C] font-[Montserrat] font-semibold hover:underline hidden sm:block">
               ← View Site
