@@ -53,3 +53,9 @@ id = "5_wxShu32Uxqbj_hAlrv7"
 uri = "file://print-server/dist/ochel-print-server.tar.gz"
 type = "unspecified"
 title = "O'chel Foods Print Server (PC .exe + config.json)"
+
+[[outputs]]
+id = "LLmQElsupM5RJAcDKHRuc"
+uri = "file://print-server/ochel-print-server-v2.tar.gz"
+type = "unspecified"
+title = "O'chel Print Server v2 (fixed)"

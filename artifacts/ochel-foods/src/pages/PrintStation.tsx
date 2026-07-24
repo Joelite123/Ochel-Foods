@@ -38,7 +38,7 @@ function fmtN(n: unknown) {
 type OrderItem = {
   product_name: string;
   quantity: number;
-  unit_price: number;
+  price: number;
   size?: string;
   extras?: { name: string; quantity: number }[];
   removed_ingredients?: string[];
@@ -79,7 +79,7 @@ function buildEscPos(order: Order, items: OrderItem[]): Uint8Array {
   add(b(ESC, 0x61, 0x00));
   for (const item of items) {
     const left  = `${item.quantity}x ${item.product_name}`;
-    const right = fmtN((Number(item.unit_price) || 0) * (Number(item.quantity) || 1));
+    const right = fmtN((Number(item.price) || 0) * (Number(item.quantity) || 1));
     add(t(pad(left, right) + "\n"));
     if (item.size) add(t(`   Size: ${item.size}\n`));
     for (const ex of item.extras ?? []) add(t(`   + ${ex.name}\n`));

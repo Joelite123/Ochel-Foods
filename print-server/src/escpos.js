@@ -69,7 +69,7 @@ function buildReceipt(order, items) {
   for (const item of (items || [])) {
     const name  = String(item.product_name || "Item");
     const qty   = Number(item.quantity) || 1;
-    const price = (Number(item.unit_price) || 0) * qty;
+    const price = (Number(item.price) || 0) * qty;
     const left  = `${qty}x ${name}`;
     add(t(padLine(left, fmtPrice(price)) + "\n"));
     if (item.size) add(t(`   Size: ${item.size}\n`));
