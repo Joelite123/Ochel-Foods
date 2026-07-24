@@ -589,6 +589,11 @@ export default function AdminOrders() {
                     <td className="px-4 py-3">
                       <p className="font-semibold text-gray-800">{o.customer_name}</p>
                       <p className="text-gray-400 text-xs">{o.customer_phone}</p>
+                      {(o.order_items?.length ?? 0) > 0 && (
+                        <p className="text-gray-500 text-xs mt-0.5 leading-snug max-w-[180px]">
+                          {o.order_items!.map((i) => `${i.product_name}${i.size ? ` (${i.size})` : ""} ×${i.quantity}`).join(", ")}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 text-xs">
                       {o.delivery_zones?.label || <span className="text-gray-300">—</span>}

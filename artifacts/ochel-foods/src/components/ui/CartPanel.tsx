@@ -137,6 +137,7 @@ export default function CartPanel() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
+  const [savedFinalTotal, setSavedFinalTotal] = useState(0);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
@@ -526,6 +527,7 @@ export default function CartPanel() {
 
     // Order saved successfully
     setSavedOrderId(newOrderId);
+    setSavedFinalTotal(finalTotal);
     clearCart();
     setWalletApplied(0);
     handleRemovePromo();
@@ -1164,10 +1166,10 @@ export default function CartPanel() {
                   <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between mb-4">
                     <div>
                       <p className="text-xs text-gray-400 font-[Montserrat]">Amount to transfer</p>
-                      <p className="font-chewy text-3xl text-[#E8192C]">{formatPrice(finalTotal)}</p>
+                      <p className="font-chewy text-3xl text-[#E8192C]">{formatPrice(savedFinalTotal)}</p>
                     </div>
                     <button
-                      onClick={() => handleCopy("amount", String(finalTotal))}
+                      onClick={() => handleCopy("amount", String(savedFinalTotal))}
                       className={`flex items-center gap-1.5 text-xs font-[Montserrat] font-semibold px-3 py-2 rounded-xl border transition-all ${
                         copiedField === "amount"
                           ? "bg-green-100 border-green-300 text-green-700"

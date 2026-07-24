@@ -18,7 +18,8 @@ export default function AccountPage() {
   const { referralCode, walletBalance, activeRewards, generateReferralCode, isLoading } = useRewards();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("overview");
-  const [orders, setOrders] = useState<DBOrder[]>([]);
+  type OrderWithItems = DBOrder & { order_items?: import("@/lib/supabase").DBOrderItem[] };
+  const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -31,11 +32,11 @@ export default function AccountPage() {
       setOrdersLoading(true);
       supabase
         .from("orders")
-        .select("*")
+        .select("*, order_items(*)")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .then(({ data }) => {
-          if (data) setOrders(data as DBOrder[]);
+          if (data) setOrders(data as OrderWithItems[]);
           setOrdersLoading(false);
         });
     }
@@ -207,8 +208,27 @@ export default function AccountPage() {
                     {statusLabel[order.status] ?? order.status}
                   </span>
                 </div>
-                <div className="flex justify-between text-sm font-[Montserrat]">
-                  <span className="text-gray-500">{order.delivery_address}</span>
+                {(order.order_items?.length ?? 0) > 0 && (
+                  <div className="mb-2">
+                    <ul className="space-y-0.5">
+                      {order.order_items!.map((item) => (
+                        <li key={item.id} className="text-xs font-[Montserrat] text-gray-700 flex justify-between gap-2">
+                          <span className="flex-1">
+                            {item.product_name}{item.size ? ` (${item.size})` : ""} ×{item.quantity}
+                            {(item.extras?.length ?? 0) > 0 && (
+                              <span className="text-green-600 ml-1">
+                                + {item.extras!.map((e) => e.name).join(", ")}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-gray-500 flex-shrink-0">{formatPrice(item.price * item.quantity)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-[Montserrat] border-t border-gray-50 pt-2">
+                  <span className="text-gray-500 text-xs truncate max-w-[55%]">{order.delivery_address}</span>
                   <span className="font-bold text-[#E8192C]">{formatPrice(order.total)}</span>
                 </div>
               </div>
