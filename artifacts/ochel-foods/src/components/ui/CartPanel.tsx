@@ -110,7 +110,7 @@ type CheckoutForm = {
 const BANK_DETAILS = {
   bankName: "Moniepoint MFB",
   accountName: "O'chel Foods Ltd",
-  accountNumber: "4005702700",
+  accountNumber: "5280017839",
 };
 
 export default function CartPanel() {
