@@ -59,3 +59,9 @@ id = "LLmQElsupM5RJAcDKHRuc"
 uri = "file://print-server/ochel-print-server-v2.tar.gz"
 type = "unspecified"
 title = "O'chel Print Server v2 (with start.bat)"
+
+[[outputs]]
+id = "nrpEhvRyb8Ndn36IjrjGg"
+uri = "file://ochel-print-server-v2-small.zip"
+type = "unspecified"
+title = "O'chel Print Server v2 (157KB ZIP)"
