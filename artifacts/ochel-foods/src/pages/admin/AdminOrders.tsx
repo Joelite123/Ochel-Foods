@@ -395,7 +395,8 @@ export default function AdminOrders() {
       };
       const message = statusMessages[status];
       if (message) {
-        const phone = order.customer_phone.replace(/\D/g, "");
+        const rawPhone = order.customer_phone.replace(/\D/g, "");
+        const phone = rawPhone.startsWith("0") ? "234" + rawPhone.slice(1) : rawPhone.startsWith("234") ? rawPhone : "234" + rawPhone;
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
       }
     }
@@ -772,7 +773,7 @@ export default function AdminOrders() {
 
               {/* WhatsApp quick link */}
               <a
-                href={`https://wa.me/${selected.customer_phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                href={`https://wa.me/${(([r]) => r.startsWith("0") ? "234" + r.slice(1) : r.startsWith("234") ? r : "234" + r)([selected.customer_phone.replace(/\D/g, "")])}?text=${encodeURIComponent(
                   `Hi ${selected.customer_name}! Your O'chel order #${selected.id.slice(0, 8).toUpperCase()} is now: *${labelMap[selected.status]}*.`
                 )}`}
                 target="_blank" rel="noopener noreferrer"
