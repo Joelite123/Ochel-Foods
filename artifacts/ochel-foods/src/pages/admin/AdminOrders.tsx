@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Search, RefreshCw, Eye, X, Download, Printer, Filter,
+  Search, RefreshCw, Eye, X, Download, Printer, Filter, Plus,
 } from "lucide-react";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
+import ManualOrderModal from "@/components/ui/ManualOrderModal";
 
 const STATUSES = [
   { value: "unpaid",           label: "Unpaid",           color: "bg-yellow-100 text-yellow-700" },
@@ -275,6 +276,7 @@ export default function AdminOrders() {
   const [selected, setSelected] = useState<OrderWithItems | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [showManualOrder, setShowManualOrder] = useState(false);
 
   /* Mark all as read when admin opens this page */
   const { markAllRead } = useNotifications();
@@ -483,6 +485,14 @@ export default function AdminOrders() {
         >
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh
         </button>
+
+        {/* Add Manual Order */}
+        <button
+          onClick={() => setShowManualOrder(true)}
+          className="flex items-center gap-2 bg-[#E8192C] hover:bg-[#c8151f] text-white px-4 py-2 rounded-xl text-sm font-bold font-[Montserrat] transition-colors"
+        >
+          <Plus className="w-4 h-4" /> Add Order
+        </button>
       </div>
 
       {/* Filter panel */}
@@ -663,6 +673,19 @@ export default function AdminOrders() {
           </table>
         </div>
       </div>
+
+      {/* Manual order modal */}
+      {showManualOrder && (
+        <ManualOrderModal
+          onClose={() => setShowManualOrder(false)}
+          onOrderCreated={(newOrder) => {
+            setOrders((prev) => {
+              if (prev.find((o) => o.id === (newOrder as OrderWithItems).id)) return prev;
+              return [newOrder as OrderWithItems, ...prev];
+            });
+          }}
+        />
+      )}
 
       {/* Order detail modal */}
       {selected && (
