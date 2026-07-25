@@ -583,25 +583,72 @@ export default function CartPanel() {
   };
 
   const handleProceedToCheckout = async () => {
-    const productIds = items.map((i) => i.productId).filter(Boolean);
-    if (productIds.length > 0) {
-      setCheckingAvailability(true);
-      const { data: available } = await supabase
+    // Split items by type — combos live in the `combos` table, everything else in `products`
+    const regularIds = items
+      .filter((i) => i.category !== "combos" && i.productId)
+      .map((i) => i.productId as string);
+    const comboIds = items
+      .filter((i) => i.category === "combos" && i.productId)
+      .map((i) => i.productId as string);
+
+    if (regularIds.length === 0 && comboIds.length === 0) {
+      setStep("checkout");
+      return;
+    }
+
+    setCheckingAvailability(true);
+    const toRemove: typeof items = [];
+
+    // Check regular products (food, drinks) against the products table.
+    // Only remove items that are EXPLICITLY marked is_available=false in the DB.
+    // Items whose IDs are not found (e.g. legacy static IDs) are left in the cart.
+    if (regularIds.length > 0) {
+      const { data } = await supabase
         .from("products")
-        .select("id")
-        .in("id", productIds)
-        .eq("is_available", true);
-      setCheckingAvailability(false);
-      const availableIds = new Set((available ?? []).map((p: { id: string }) => p.id));
-      const unavailable = items.filter((i) => i.productId && !availableIds.has(i.productId));
-      if (unavailable.length > 0) {
-        unavailable.forEach((i) => {
-          removeItem(i.id);
-          toast.error(`"${i.name}" is no longer available and has been removed from your cart.`);
-        });
-        return;
+        .select("id, is_available")
+        .in("id", regularIds);
+      if (data) {
+        const explicitlyUnavailable = new Set(
+          (data as { id: string; is_available: boolean }[])
+            .filter((p) => !p.is_available)
+            .map((p) => p.id)
+        );
+        items
+          .filter((i) => i.category !== "combos" && i.productId && explicitlyUnavailable.has(i.productId))
+          .forEach((i) => toRemove.push(i));
       }
     }
+
+    // Check combos against the combos table.
+    // Only remove combos explicitly marked is_active=false in the DB.
+    // Static-data combos (IDs like "combo-1" not in DB) are left in the cart.
+    if (comboIds.length > 0) {
+      const { data } = await supabase
+        .from("combos")
+        .select("id, is_active")
+        .in("id", comboIds);
+      if (data) {
+        const explicitlyInactive = new Set(
+          (data as { id: string; is_active: boolean }[])
+            .filter((c) => !c.is_active)
+            .map((c) => c.id)
+        );
+        items
+          .filter((i) => i.category === "combos" && i.productId && explicitlyInactive.has(i.productId))
+          .forEach((i) => toRemove.push(i));
+      }
+    }
+
+    setCheckingAvailability(false);
+
+    if (toRemove.length > 0) {
+      toRemove.forEach((i) => {
+        removeItem(i.id);
+        toast.error(`"${i.name}" is no longer available and has been removed from your cart.`);
+      });
+      return;
+    }
+
     setStep("checkout");
   };
 

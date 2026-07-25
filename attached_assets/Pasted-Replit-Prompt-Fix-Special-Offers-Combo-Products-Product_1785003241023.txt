@@ -1,0 +1,112 @@
+Replit Prompt – Fix Special Offers / Combo Products & Product Availability Bugs
+We have several related bugs in the O'chel Foods ordering system involving Combo/Special Offer products and product availability. Please investigate the root cause and fix it without changing any unrelated functionality or UI.
+IMPORTANT
+Do not redesign any pages.
+Do not change any existing business logic unless it is directly related to these bugs.
+Preserve all existing checkout, dashboard, payment, printer, analytics, WhatsApp and order functionality.
+If any Supabase schema changes are required, do not modify Supabase directly. Instead, reply with the SQL migration(s) for me to run manually.
+Bug 1 – Special Offers page on Dashboard is empty
+The Special Offers / Combos page on the Dashboard is empty, even though the Special Offers are correctly displaying on the customer-facing website.
+This should not happen.
+The products currently visible on the website are supposed to be visible on the Dashboard as well so administrators can manage them.
+Please investigate:
+Are the website and dashboard reading from different tables?
+Are they querying different product sources?
+Is there an incorrect filter?
+Is the dashboard using the wrong availability condition?
+Is the dashboard looking for an old schema?
+Find the root cause and ensure the Dashboard displays the same active Special Offers/Combo products that appear on the website.
+Bug 2 – Combo / Special Offer products removed from cart
+Customers can:
+see Combo/Special Offer products,
+add them to the cart successfully,
+but during checkout the system sometimes displays a message similar to:
+"Burger + Chicken + Chips is no longer available and has been removed from your cart."
+The item is then automatically removed from the cart.
+Important
+This bug is intermittent.
+Sometimes the exact same Combo/Special Offer product checks out successfully without any issue.
+Other times it is removed as unavailable.
+Because of this, please investigate the root cause instead of adding a workaround.
+Possible areas to investigate include:
+checkout validation
+stale cached data
+inconsistent availability checks
+race conditions
+different queries between cart and checkout
+incorrect joins
+product ID mismatches
+inactive record lookups
+Combo table vs Products table validation
+inconsistent realtime data
+The checkout validator should consistently recognise Combo/Special Offer products as valid purchasable products.
+Bug 3 – Drinks sometimes removed as unavailable
+Drinks:
+appear on the website,
+appear in the Dashboard Products page,
+are marked as available,
+yet sometimes certain drinks are also removed during checkout with an unavailable message.
+Again, this does not happen consistently.
+Please investigate the root cause instead of masking the issue.
+Possible causes include:
+stale availability data
+incorrect validation
+caching
+duplicate IDs
+stock validation
+category filtering
+inconsistent product queries
+Bug 4 – Review the entire checkout validation process
+Please review how checkout validates products before an order is accepted.
+Ensure the validation works correctly for all product types, including:
+Regular products
+Drinks
+Combo meals
+Special Offers
+Any future product categories
+The validation should use one consistent source of truth.
+A product that is:
+active,
+visible on the website,
+and marked available,
+should never be removed from the customer's cart.
+Bug 5 – Dashboard consistency
+Ensure all product-related pages are using consistent data.
+The Dashboard and Website should always agree on:
+which products exist,
+which products are active,
+which products are available,
+which products belong to each category.
+There should never be a situation where:
+a product appears on the website,
+but is missing from the Dashboard,
+or
+appears available,
+but is rejected during checkout.
+Root Cause Analysis
+Before making changes, identify exactly what caused these issues.
+In your response, explain:
+the root cause,
+which files were modified,
+why the bugs occurred,
+how the fixes resolve them,
+and whether any manual testing is recommended.
+Do not simply patch the symptoms—fix the underlying cause.
+Testing Checklist
+Before completing the work, verify all of the following:
+✓ Regular products remain in the cart.
+✓ Drinks consistently remain in the cart.
+✓ Combo meals consistently remain in the cart.
+✓ Special Offers consistently remain in the cart.
+✓ Mixed carts containing multiple product types checkout successfully every time.
+✓ Special Offers shown on the website also appear correctly on the Dashboard.
+✓ Dashboard product management continues to work.
+✓ Existing payment flow still works.
+✓ Existing printer integration still works.
+✓ Existing order creation still works.
+✓ Existing WhatsApp functionality remains unaffected.
+Finally, provide a summary stating:
+the root cause,
+files modified,
+whether any SQL changes are required,
+and whether any manual action is needed after deployment.
