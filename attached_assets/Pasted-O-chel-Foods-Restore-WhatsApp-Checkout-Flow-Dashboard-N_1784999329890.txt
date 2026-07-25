@@ -1,0 +1,72 @@
+O'chel Foods – Restore WhatsApp Checkout Flow & Dashboard Notifications (Do Not Change Other Functionality)
+This update is intended to restore specific functionality that was previously removed, while keeping all of the recent improvements (printer integration, dashboard improvements, checkout fixes, analytics, etc.) intact.
+Do NOT redesign or refactor unrelated parts of the application. Only make the changes below.
+1. Restore the "I Have Made Payment" WhatsApp Flow
+The checkout should work as follows:
+Customer adds products to cart.
+Customer proceeds to Checkout.
+The payment modal/page opens.
+Inside the payment modal, change the layout to this order:
+First
+Display the business bank account details prominently at the very top.
+Example:
+Bank Name
+Account Name
+Account Number
+These should be the first thing the customer sees without needing to scroll.
+Second
+Display a large, clear button:
+"I Have Made Payment"
+This button should replace the current "Back to Page" button as the primary action.
+Third
+Display the payment instructions underneath the button.
+This ordering is intentional because many customers are not very technical and should immediately see where to make payment.
+2. Restore WhatsApp Order Confirmation
+When the customer taps "I Have Made Payment":
+Do NOT remove the existing order creation process.
+The order should still be saved to the database exactly as it is now.
+The order should continue appearing on the dashboard.
+The order should still use the current default initial status (currently Unpaid).
+After the order is successfully saved:
+Open WhatsApp using the existing O'chel Foods phone number already configured on the website.
+Create a pre-filled WhatsApp message beginning with something similar to:
+Hi O'chel Foods, I have made payment for the following order:
+Then automatically include:
+Order Number
+Customer Name
+Phone Number
+Delivery or Pickup
+Delivery Address (if applicable)
+Delivery Date
+Preferred Time
+Every item ordered
+Quantity
+Total Amount
+Use the same business phone number already configured throughout the website.
+Do not require the customer to type anything manually.
+3. Restore Dashboard WhatsApp Status Notifications
+The dashboard previously sent WhatsApp messages whenever an administrator changed an order status.
+Restore this functionality.
+Whenever the order status changes from the dashboard (Preparing, Ready, Delivered, Cancelled, etc.):
+Automatically open/send the appropriate WhatsApp notification to the customer using the phone number stored with the order.
+The existing O'chel Foods business WhatsApp number already configured on the website should be used.
+This functionality previously existed and should simply be restored without changing the rest of the dashboard workflow.
+4. Preserve Existing Functionality
+Do NOT remove or alter any of the following:
+Receipt printer integration
+Dashboard analytics
+Dashboard layout
+Checkout price calculations
+Product management
+Delivery settings
+Operating hours logic
+Existing database structure
+Existing Supabase Realtime functionality
+Existing printer communication
+These features are already working correctly.
+This update should only restore the WhatsApp checkout workflow and dashboard WhatsApp notifications.
+5. If Any Database Changes Are Required
+If restoring these features requires any Supabase changes:
+Do NOT attempt to modify the Supabase schema directly.
+Instead, provide the SQL migration(s) required so they can be reviewed and run manually in Supabase.
+Only generate SQL if absolutely necessary.
