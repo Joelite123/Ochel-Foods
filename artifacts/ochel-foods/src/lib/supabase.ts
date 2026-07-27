@@ -171,6 +171,14 @@ export type DBOrderItem = {
   note: string | null;
 };
 
+export type DBOrderTimeline = {
+  id: string;
+  order_id: string;
+  status: string;
+  note: string | null;
+  created_at: string;
+};
+
 export type DBDeliveryZone = {
   id: string;
   label: string;

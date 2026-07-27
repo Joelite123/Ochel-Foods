@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Search, RefreshCw, Eye, X, Download, Printer, Filter, Plus,
 } from "lucide-react";
-import { supabase, DBOrder } from "@/lib/supabase";
+import { supabase, DBOrder, DBOrderTimeline } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
@@ -277,6 +277,8 @@ export default function AdminOrders() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showManualOrder, setShowManualOrder] = useState(false);
+  const [timeline, setTimeline] = useState<DBOrderTimeline[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   /* Mark all as read when admin opens this page */
   const { markAllRead } = useNotifications();
@@ -310,6 +312,41 @@ export default function AdminOrders() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  /* ── Timeline: fetch when an order is selected ── */
+  useEffect(() => {
+    if (!selected) { setTimeline([]); return; }
+    setTimelineLoading(true);
+    supabase
+      .from("order_timeline")
+      .select("*")
+      .eq("order_id", selected.id)
+      .order("created_at", { ascending: true })
+      .then(({ data }) => {
+        setTimeline((data as DBOrderTimeline[]) ?? []);
+        setTimelineLoading(false);
+      });
+  }, [selected?.id]);
+
+  /* ── Timeline: realtime updates for the open order ── */
+  useEffect(() => {
+    if (!selected) return;
+    const ch = supabase
+      .channel(`order-timeline-${selected.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "order_timeline", filter: `order_id=eq.${selected.id}` },
+        (payload) => {
+          const entry = payload.new as DBOrderTimeline;
+          setTimeline((prev) => {
+            if (prev.find((e) => e.id === entry.id)) return prev;
+            return [...prev, entry];
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [selected?.id]);
 
   /* ── Supabase Realtime — live order updates ── */
   const ordersRef = useRef(orders);
@@ -382,6 +419,9 @@ export default function AdminOrders() {
     setUpdating(null);
     setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: status as DBOrder["status"] } : o));
     if (selected?.id === orderId) setSelected((prev) => prev ? { ...prev, status: status as DBOrder["status"] } : null);
+
+    /* Record timeline entry — fire-and-forget; realtime will push it back */
+    supabase.from("order_timeline").insert({ order_id: orderId, status }).then(() => {});
 
     toast.success(`Order marked as ${labelMap[status]}`);
 
@@ -792,6 +832,46 @@ export default function AdminOrders() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Order Timeline */}
+              <div>
+                <h3 className="text-sm font-semibold font-[Montserrat] text-gray-700 mb-3">Order Timeline</h3>
+                {timelineLoading ? (
+                  <p className="text-xs text-gray-400 font-[Montserrat]">Loading history…</p>
+                ) : timeline.length === 0 ? (
+                  <p className="text-xs text-gray-400 font-[Montserrat] italic">
+                    No history yet — timeline entries will appear here as this order progresses.
+                  </p>
+                ) : (
+                  <ol className="relative border-l-2 border-gray-100 space-y-0 ml-2">
+                    {timeline.map((entry, idx) => {
+                      const dt = new Date(entry.created_at);
+                      const isFirst = idx === 0;
+                      const isLast = idx === timeline.length - 1;
+                      const date = dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+                      const time = dt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                      const prevDt = idx > 0 ? new Date(timeline[idx - 1].created_at) : null;
+                      const sameDay = prevDt &&
+                        prevDt.toDateString() === dt.toDateString();
+                      return (
+                        <li key={entry.id} className="relative pl-6 pb-4 last:pb-0">
+                          {/* dot */}
+                          <span className={`absolute -left-[7px] top-0.5 w-3 h-3 rounded-full border-2 border-white ${isLast ? "bg-[#E8192C]" : "bg-gray-300"}`} />
+                          <div className="font-[Montserrat]">
+                            <p className={`text-xs font-bold ${isLast ? "text-[#E8192C]" : "text-gray-700"}`}>
+                              {labelMap[entry.status] ?? entry.status}
+                            </p>
+                            {(isFirst || !sameDay) && (
+                              <p className="text-[10px] text-gray-400">{date}</p>
+                            )}
+                            <p className="text-[10px] text-gray-400">{time}</p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
               </div>
 
               {/* WhatsApp quick link */}
