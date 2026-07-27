@@ -110,42 +110,70 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
 /* ── CSV Export ── */
 function exportCSV(orders: OrderWithItems[]) {
   const headers = [
-    "Order ID", "Order Date", "Delivery Date", "Customer Name", "Phone", "Email",
-    "Address", "Zone", "Items", "Subtotal", "Delivery Fee", "Discount", "Wallet Used",
-    "Total", "Status", "Promo Code", "Referral Code", "Notes",
+    "Order ID", "Order Date", "Order Status", "Customer Name", "Phone", "Email",
+    "Delivery Address", "Delivery Zone", "Delivery Date", "Delivery Time", "Order Type",
+    "Product", "Size", "Extras", "Quantity", "Unit Price (₦)", "Line Total (₦)",
+    "Subtotal (₦)", "Delivery Fee (₦)", "Discount (₦)", "Wallet Used (₦)", "Order Total (₦)",
+    "Promo Code", "Referral Code", "Notes",
   ];
-  const rows = orders.map((o) => [
-    `#${o.id.slice(0, 8).toUpperCase()}`,
-    new Date(o.created_at).toLocaleString("en-GB"),
-    o.delivery_date
+
+  const rows: (string | number)[][] = [];
+
+  for (const o of orders) {
+    const items = o.order_items ?? [];
+    const orderDate = new Date(o.created_at).toLocaleString("en-GB");
+    const deliveryDate = o.delivery_date
       ? new Date(o.delivery_date + "T12:00:00").toLocaleDateString("en-GB")
-      : "",
-    o.customer_name,
-    o.customer_phone,
-    o.customer_email || "",
-    o.delivery_address,
-    o.delivery_zones?.label || "",
-    (o.order_items || [])
-      .map((i) => `${i.product_name}${i.size ? ` (${i.size})` : ""} ×${i.quantity}`)
-      .join("; "),
-    Number(o.subtotal),
-    Number(o.delivery_fee),
-    Number(o.discount_amount),
-    Number(o.referral_wallet_used),
-    Number(o.total),
-    labelMap[o.status] ?? o.status,
-    o.promo_code || "",
-    o.referral_code_used || "",
-    o.special_instructions || "",
-  ]);
+      : "";
+
+    /* Determine order type from address field — pickup orders set address to "Pickup" */
+    const orderType = o.delivery_address?.toLowerCase() === "pickup" ? "Pickup" : "Delivery";
+
+    /* If an order has no items (edge case), still export one row for the order */
+    const itemList = items.length > 0 ? items : [null];
+
+    for (const item of itemList) {
+      const extrasStr = item
+        ? (item.extras ?? []).map((e) => `${e.name} ×${e.quantity}`).join(", ")
+        : "";
+      const unitPrice  = item ? Number(item.price) : 0;
+      const lineTotal  = item ? Number(item.price) * item.quantity : 0;
+
+      rows.push([
+        `#${o.id.slice(0, 8).toUpperCase()}`,
+        orderDate,
+        labelMap[o.status] ?? o.status,
+        o.customer_name,
+        o.customer_phone,
+        o.customer_email ?? "",
+        o.delivery_address,
+        o.delivery_zones?.label ?? "",
+        deliveryDate,
+        o.delivery_time ?? "",
+        orderType,
+        item?.product_name ?? "",
+        item?.size ?? "",
+        extrasStr,
+        item?.quantity ?? "",
+        unitPrice,
+        lineTotal,
+        Number(o.subtotal),
+        Number(o.delivery_fee),
+        Number(o.discount_amount),
+        Number(o.referral_wallet_used),
+        Number(o.total),
+        o.promo_code ?? "",
+        o.referral_code_used ?? "",
+        o.special_instructions ?? "",
+      ]);
+    }
+  }
 
   const csv = [headers, ...rows]
-    .map((r) =>
-      r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
-    )
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
     .join("\n");
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
