@@ -112,6 +112,10 @@ export default function AdminAnalytics() {
       });
   }, []);
 
+  /* ── Confirmed-only subsets (derived client-side, no extra DB reads) ── */
+  const confirmedOrders = useMemo(() => orders.filter((o) => o.status === "confirmed"), [orders]);
+  const confirmedAllOrders = useMemo(() => allOrders.filter((o) => o.status === "confirmed"), [allOrders]);
+
   /* ── Existing computed values (unchanged) ── */
   const revenueData = (() => {
     const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
@@ -121,11 +125,20 @@ export default function AdminAnalytics() {
       const key = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
       map.set(key, { revenue: 0, orders: 0 });
     }
+    // Revenue from confirmed orders only
+    confirmedOrders.forEach((o) => {
+      const key = new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+      if (map.has(key)) {
+        const cur = map.get(key)!;
+        map.set(key, { revenue: cur.revenue + Number(o.total), orders: cur.orders });
+      }
+    });
+    // Order count from all orders (operational — shows total activity per day)
     orders.forEach((o) => {
       const key = new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
       if (map.has(key)) {
         const cur = map.get(key)!;
-        map.set(key, { revenue: cur.revenue + Number(o.total), orders: cur.orders + 1 });
+        map.set(key, { revenue: cur.revenue, orders: cur.orders + 1 });
       }
     });
     return Array.from(map.entries()).map(([date, v]) => ({ date, ...v }));
@@ -149,9 +162,11 @@ export default function AdminAnalytics() {
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 
-  const totalRevenue = orders.reduce((s, o) => s + Number(o.total), 0);
+  // Revenue & AOV use confirmed orders only (actual sales)
+  const totalRevenue = confirmedOrders.reduce((s, o) => s + Number(o.total), 0);
   const deliveredRevenue = orders.filter((o) => o.status === "delivered").reduce((s, o) => s + Number(o.total), 0);
-  const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
+  const avgOrderValue = confirmedOrders.length > 0 ? totalRevenue / confirmedOrders.length : 0;
+  // Conversion rate uses all orders placed (any status) vs site visits
   const conversionRate = totalVisits > 0 ? ((orders.length / totalVisits) * 100).toFixed(1) : "0.0";
 
   const handleExport = () => {
@@ -171,10 +186,10 @@ export default function AdminAnalytics() {
 
   /* ── New computed values ── */
 
-  /* Product aggregation for selected product period */
+  /* Product aggregation for selected product period — confirmed orders only */
   const filteredForProducts = useMemo(
-    () => filterByProductPeriod(allOrders, productPeriod),
-    [allOrders, productPeriod]
+    () => filterByProductPeriod(confirmedAllOrders, productPeriod),
+    [confirmedAllOrders, productPeriod]
   );
 
   const productStats = useMemo(() => aggregateProducts(filteredForProducts), [filteredForProducts]);
@@ -183,32 +198,32 @@ export default function AdminAnalytics() {
   const bottomProducts = useMemo(() => [...productStats].filter((p) => p.qty > 0).sort((a, b) => a.qty - b.qty).slice(0, 10), [productStats]);
   const revenueByProduct = useMemo(() => [...productStats].sort((a, b) => b.revenue - a.revenue).slice(0, 10), [productStats]);
 
-  /* Top customers — all time, ranked by total spent */
+  /* Top customers — all time, ranked by confirmed order spend */
   const topCustomers = useMemo(() => {
     const map = new Map<string, { name: string; orders: number; spent: number }>();
-    for (const o of allOrders) {
+    for (const o of confirmedAllOrders) {
       const key = o.customer_phone;
       const cur = map.get(key) ?? { name: o.customer_name, orders: 0, spent: 0 };
       map.set(key, { name: o.customer_name, orders: cur.orders + 1, spent: cur.spent + Number(o.total) });
     }
     return Array.from(map.values()).sort((a, b) => b.spent - a.spent).slice(0, 10);
-  }, [allOrders]);
+  }, [confirmedAllOrders]);
 
-  /* Ordering trends — use period-filtered orders */
+  /* Ordering trends — confirmed orders only (busy times reflect real sales) */
   const ordersByHour = useMemo(() => {
     const counts = new Array(24).fill(0);
-    orders.forEach((o) => { counts[new Date(o.created_at).getHours()]++; });
+    confirmedOrders.forEach((o) => { counts[new Date(o.created_at).getHours()]++; });
     return HOURS.map(({ hour, label }) => ({ label, orders: counts[hour] }));
-  }, [orders]);
+  }, [confirmedOrders]);
 
   const ordersByWeekday = useMemo(() => {
     const counts = new Array(7).fill(0);
-    orders.forEach((o) => { counts[new Date(o.created_at).getDay()]++; });
+    confirmedOrders.forEach((o) => { counts[new Date(o.created_at).getDay()]++; });
     return WEEKDAYS.map((day, i) => ({ day: day.slice(0, 3), orders: counts[i] }));
-  }, [orders]);
+  }, [confirmedOrders]);
 
-  /* All-time summary insight cards */
-  const allTimeProducts = useMemo(() => aggregateProducts(allOrders), [allOrders]);
+  /* All-time summary insight cards — confirmed orders only */
+  const allTimeProducts = useMemo(() => aggregateProducts(confirmedAllOrders), [confirmedAllOrders]);
   const bestSellingProduct   = useMemo(() => [...allTimeProducts].sort((a, b) => b.qty - a.qty)[0], [allTimeProducts]);
   const highestRevenueProduct = useMemo(() => [...allTimeProducts].sort((a, b) => b.revenue - a.revenue)[0], [allTimeProducts]);
   const topCustomerAllTime   = useMemo(() => topCustomers[0], [topCustomers]);
@@ -252,10 +267,10 @@ export default function AdminAnalytics() {
       {!loading && (
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {[
-            { label: "Total Orders",       value: orders.length.toString(),   color: "text-blue-600",   bg: "bg-blue-50",   icon: ShoppingBag },
-            { label: "Total Revenue",      value: formatPrice(totalRevenue),  color: "text-[#E8192C]",  bg: "bg-red-50",    icon: TrendingUp },
-            { label: "Delivered Revenue",  value: formatPrice(deliveredRevenue), color: "text-green-600", bg: "bg-green-50", icon: TrendingUp },
-            { label: "Avg Order Value",    value: formatPrice(avgOrderValue), color: "text-purple-600", bg: "bg-purple-50", icon: TrendingUp },
+            { label: "Total Orders",          value: orders.length.toString(),      color: "text-blue-600",   bg: "bg-blue-50",   icon: ShoppingBag },
+            { label: "Confirmed Revenue",     value: formatPrice(totalRevenue),     color: "text-[#E8192C]",  bg: "bg-red-50",    icon: TrendingUp },
+            { label: "Delivered Revenue",     value: formatPrice(deliveredRevenue), color: "text-green-600",  bg: "bg-green-50",  icon: TrendingUp },
+            { label: "Avg Order Value",       value: formatPrice(avgOrderValue),    color: "text-purple-600", bg: "bg-purple-50", icon: TrendingUp },
             { label: "Site Visits",        value: totalVisits.toLocaleString(), color: "text-orange-500", bg: "bg-orange-50", icon: Users },
             { label: "Conversion Rate",    value: `${conversionRate}%`,      color: "text-teal-600",   bg: "bg-teal-50",   icon: MousePointerClick },
           ].map((c) => (
@@ -512,7 +527,7 @@ export default function AdminAnalytics() {
           {/* Section 4 — Top Customers */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h3 className="font-chewy text-lg text-gray-800 mb-1">Top Customers</h3>
-            <p className="text-xs text-gray-400 font-[Montserrat] mb-4">Ranked by total amount spent — all time</p>
+            <p className="text-xs text-gray-400 font-[Montserrat] mb-4">Ranked by confirmed order spend — all time</p>
             {topCustomers.length === 0 ? (
               <p className="text-sm text-gray-400 font-[Montserrat] italic">No customer data yet.</p>
             ) : (
