@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
+import PinGuard from "@/components/ui/PinGuard";
 
 type Stats = {
   todayOrders: number;
@@ -95,14 +96,6 @@ export default function AdminOverview() {
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-[#E8192C] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
   const cards = [
     { label: "Today's Orders", value: stats.todayOrders, sub: "orders placed today", icon: ShoppingBag, color: "text-blue-600", bg: "bg-blue-50" },
     { label: "Today's Revenue", value: formatPrice(stats.todayRevenue), sub: "from today's orders", icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
@@ -112,7 +105,13 @@ export default function AdminOverview() {
   ];
 
   return (
-    <div className="space-y-6">
+    <PinGuard title="Business Overview">
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-4 border-[#E8192C] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : (
+      <div className="space-y-6">
       {/* Stats cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {cards.map((c) => (
@@ -193,6 +192,8 @@ export default function AdminOverview() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+      )}
+    </PinGuard>
   );
 }

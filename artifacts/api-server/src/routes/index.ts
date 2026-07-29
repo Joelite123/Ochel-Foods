@@ -7,6 +7,7 @@ import newsletterRouter from "./newsletter.js";
 import subscribeRouter from "./newsletter-subscribe.js";
 import menuRouter from "./menu.js";
 import printStreamRouter from "./print-stream.js";
+import adminRouter from "./admin.js";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use("/customers", customersRouter);
 router.use("/newsletter", newsletterRouter);
 router.use("/subscribe", subscribeRouter);
 router.use(printStreamRouter);
+router.use("/admin", adminRouter);
 
 export default router;

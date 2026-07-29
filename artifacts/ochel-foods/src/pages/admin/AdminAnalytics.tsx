@@ -9,6 +9,7 @@ import {
   TrendingUp, Users, ShoppingBag, MousePointerClick, Download,
   Award, Star, Trophy,
 } from "lucide-react";
+import PinGuard from "@/components/ui/PinGuard";
 
 type Period = "7d" | "30d" | "90d";
 type ProductPeriod = "today" | "week" | "month" | "all";
@@ -244,6 +245,7 @@ export default function AdminAnalytics() {
   };
 
   return (
+    <PinGuard title="Analytics">
     <div className="space-y-6">
       {/* Controls */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -594,5 +596,6 @@ export default function AdminAnalytics() {
         </>
       )}
     </div>
+    </PinGuard>
   );
 }
