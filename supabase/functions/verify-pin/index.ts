@@ -58,8 +58,11 @@ Deno.serve(async (req) => {
 
   const success = data.value === pin;
 
+  // Always return 200 — success/failure is in the body, not the status code.
+  // A 401 here would cause the Supabase client to treat it as a network error
+  // rather than a valid "wrong PIN" response.
   return new Response(JSON.stringify({ success }), {
-    status: success ? 200 : 401,
+    status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });
