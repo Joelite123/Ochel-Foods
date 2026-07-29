@@ -1,7 +1,10 @@
 import { useState, ReactNode, KeyboardEvent } from "react";
 import { Lock } from "lucide-react";
 import { useLocation } from "wouter";
-import { apiUrl } from "@/lib/api";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const VERIFY_PIN_URL = `${SUPABASE_URL}/functions/v1/verify-pin`;
 
 /** sessionStorage key — set once per browser session when PIN is accepted */
 const SESSION_KEY = "ochel_admin_pin_unlocked";
@@ -45,9 +48,13 @@ export default function PinGuard({ children, title = "Business Overview" }: PinG
     setChecking(true);
     setError("");
     try {
-      const res = await fetch(apiUrl("/api/admin/verify-pin"), {
+      const res = await fetch(VERIFY_PIN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "apikey": SUPABASE_ANON_KEY,
+        },
         body: JSON.stringify({ pin: pinValue }),
       });
       const data = await res.json();
