@@ -98,7 +98,7 @@ export default function AdminPromotions() {
     setSaving(true);
     const payload: Partial<DBPromotion> = {
       ...form,
-      discount_value: form.discount_type === "free_product" ? 0 : Number(form.discount_value),
+      discount_value: form.discount_type === "free_product" ? 0 : Math.abs(Number(form.discount_value)),
       min_order_amount: form.min_order_amount ? Number(form.min_order_amount) : null,
       max_uses: form.max_uses ? Number(form.max_uses) : null,
       free_product_id: form.discount_type === "free_product" ? (form.free_product_id ?? null) : null,
@@ -322,8 +322,8 @@ export default function AdminPromotions() {
                   <label className="text-sm font-semibold font-[Montserrat] text-gray-700 block mb-1">
                     Value {form.discount_type === "percentage" ? "(%)" : "(₦)"}
                   </label>
-                  <input type="number" value={form.discount_value || ""}
-                    onChange={(e) => setForm((f) => ({ ...f, discount_value: Number(e.target.value) }))}
+                  <input type="number" min="0" value={form.discount_value || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, discount_value: Math.abs(Number(e.target.value)) }))}
                     className={field} placeholder={form.discount_type === "percentage" ? "20" : "1000"} />
                 </div>
               ) : (

@@ -364,17 +364,21 @@ export default function CartPanel() {
   function computePromoDiscount(promo: DBPromotion, cartSubtotal: number): number {
     if (promo.max_uses && promo.uses_count >= promo.max_uses) return 0;
     if (promo.min_order_amount && cartSubtotal < promo.min_order_amount) return 0;
+    // Always treat discount_value as a positive number — a negative value stored
+    // in the DB (e.g. -10 instead of 10) would otherwise flip the sign and ADD
+    // to the total instead of subtracting from it.
+    const dv = Math.abs(Number(promo.discount_value));
     if (promo.discount_type === "percentage") {
       if (promo.applicable_product_ids?.length) {
         const eligibleTotal = items
           .filter((i) => i.productId && promo.applicable_product_ids!.includes(i.productId))
           .reduce((s, i) => s + i.price * i.quantity, 0);
-        return Math.round(eligibleTotal * promo.discount_value / 100);
+        return Math.max(0, Math.round(eligibleTotal * dv / 100));
       }
-      return Math.round(cartSubtotal * promo.discount_value / 100);
+      return Math.max(0, Math.round(cartSubtotal * dv / 100));
     }
-    if (promo.discount_type === "fixed") return Math.min(promo.discount_value, cartSubtotal);
-    if (promo.discount_type === "free_product") return promo.discount_value;
+    if (promo.discount_type === "fixed") return Math.max(0, Math.min(dv, cartSubtotal));
+    if (promo.discount_type === "free_product") return Math.max(0, promo.discount_value);
     return 0;
   }
 
