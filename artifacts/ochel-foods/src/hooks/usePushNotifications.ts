@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { supabase } from "../lib/supabase";
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string;
 
@@ -77,18 +78,20 @@ export function usePushNotifications() {
       const auth = subscription.getKey("auth");
       if (!p256dh || !auth) throw new Error("Missing subscription keys");
 
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: subscription.endpoint,
-          p256dh: arrayBufferToBase64(p256dh),
-          auth: arrayBufferToBase64(auth),
-          userAgent: navigator.userAgent,
-        }),
-      });
+      // Save subscription directly to Supabase — no API server needed
+      const { error } = await supabase
+        .from("push_subscriptions")
+        .upsert(
+          {
+            endpoint: subscription.endpoint,
+            p256dh: arrayBufferToBase64(p256dh),
+            auth: arrayBufferToBase64(auth),
+            user_agent: navigator.userAgent,
+          },
+          { onConflict: "endpoint" }
+        );
 
-      if (!res.ok) throw new Error("Server rejected subscription");
+      if (error) throw new Error(error.message);
       setStatus("subscribed");
     } catch (err) {
       console.error("[Push] Subscribe error:", err);
@@ -102,11 +105,11 @@ export function usePushNotifications() {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
-        await fetch("/api/push/subscribe", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ endpoint: subscription.endpoint }),
-        });
+        // Remove from Supabase directly — no API server needed
+        await supabase
+          .from("push_subscriptions")
+          .delete()
+          .eq("endpoint", subscription.endpoint);
         await subscription.unsubscribe();
       }
       setStatus("idle");
