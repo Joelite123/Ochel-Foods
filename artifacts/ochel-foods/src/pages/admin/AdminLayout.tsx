@@ -3,9 +3,11 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Package, ShoppingBag, Users, Gift,
   MapPin, Tag, Clock, Mail, BarChart2, Menu, X, LogOut, ChevronRight, Layers,
+  Bell, BellOff, Download,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
 const navItems = [
@@ -24,11 +26,38 @@ const navItems = [
 
 type Props = { children: ReactNode };
 
+// BeforeInstallPromptEvent is non-standard — declare it locally
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 export default function AdminLayout({ children }: Props) {
   const [location] = useLocation();
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { unreadCount } = useNotifications();
+  const { status: pushStatus, subscribe: subscribePush, unsubscribe: unsubscribePush } = usePushNotifications();
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  // Capture the PWA install prompt
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    // Hide prompt once already installed
+    window.addEventListener("appinstalled", () => setInstallPrompt(null));
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setInstallPrompt(null);
+  };
 
   // Reset unread badge when navigating to orders page
   useEffect(() => {
@@ -104,8 +133,19 @@ export default function AdminLayout({ children }: Props) {
           })}
         </nav>
 
-        {/* User + sign out */}
-        <div className="px-4 py-4 border-t border-white/10">
+        {/* User + sign out + PWA controls */}
+        <div className="px-4 py-4 border-t border-white/10 space-y-2">
+          {/* Install App button — only visible when browser supports PWA install */}
+          {installPrompt && (
+            <button
+              onClick={handleInstall}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 hover:text-white text-xs font-[Montserrat] transition-colors"
+              title="Install dashboard as an app"
+            >
+              <Download className="w-3.5 h-3.5 flex-shrink-0" />
+              Install Dashboard App
+            </button>
+          )}
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-white text-sm font-semibold font-[Montserrat] truncate">
@@ -113,13 +153,46 @@ export default function AdminLayout({ children }: Props) {
               </p>
               <p className="text-white/40 text-xs font-[Montserrat]">Administrator</p>
             </div>
-            <button
-              onClick={() => signOut()}
-              title="Sign out"
-              className="text-white/40 hover:text-red-400 transition-colors p-1"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-0.5">
+              {/* Push notification toggle — hidden if browser doesn't support it */}
+              {pushStatus !== "unsupported" && (
+                <button
+                  onClick={pushStatus === "subscribed" ? unsubscribePush : subscribePush}
+                  disabled={pushStatus === "denied" || pushStatus === "requesting"}
+                  title={
+                    pushStatus === "subscribed"
+                      ? "Push notifications on — tap to disable"
+                      : pushStatus === "denied"
+                      ? "Notifications blocked — change in browser settings"
+                      : pushStatus === "requesting"
+                      ? "Requesting permission…"
+                      : "Enable push notifications for new orders"
+                  }
+                  className={`p-1 transition-colors rounded ${
+                    pushStatus === "subscribed"
+                      ? "text-green-400 hover:text-red-400"
+                      : pushStatus === "denied"
+                      ? "text-white/20 cursor-not-allowed"
+                      : pushStatus === "requesting"
+                      ? "text-white/40 animate-pulse"
+                      : "text-white/40 hover:text-white"
+                  }`}
+                >
+                  {pushStatus === "subscribed" ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+              <button
+                onClick={() => signOut()}
+                title="Sign out"
+                className="text-white/40 hover:text-red-400 transition-colors p-1 rounded"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </aside>

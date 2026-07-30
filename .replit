@@ -42,6 +42,10 @@ VITE_SUPABASE_URL = "https://fcukkruyuhnehujmlrur.supabase.co"
 VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjdWtrcnV5dWhuZWh1am1scnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NDgyODIsImV4cCI6MjA5NDQyNDI4Mn0.qUa8CELdrEx4BB-q6mkNW8_78Hoe4I9ok623kZD4YVs"
 SUPABASE_URL = "https://fcukkruyuhnehujmlrur.supabase.co"
 VITE_API_URL = "ochel-foods-production.up.railway.app"
+VAPID_PRIVATE_KEY = "zUb-jiIROrnZkt762pf0rOPoTuO0o_PsVJvM5Q-G6Mk"
+VAPID_PUBLIC_KEY = "BBs7VJSZLVd5reWig_t2Qe7dhbH6lhPh4YCfPXSoE-qjVS43VtIL238rm7sVjmW3eYJg0aByHRaa4RH3_Yri6MQ"
+VAPID_SUBJECT = "mailto:admin@ochelfoods.com"
+VITE_VAPID_PUBLIC_KEY = "BBs7VJSZLVd5reWig_t2Qe7dhbH6lhPh4YCfPXSoE-qjVS43VtIL238rm7sVjmW3eYJg0aByHRaa4RH3_Yri6MQ"
 
 [nix]
 channel = "stable-25_05"

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase.js";
+import { sendOrderPush } from "./push.js";
 
 const router = Router();
 
@@ -89,6 +90,19 @@ router.post("/", async (req: Request, res: Response) => {
       note: item.note || null,
     }));
     await supabaseAdmin.from("order_items").insert(orderItems);
+  }
+
+  // Fire-and-forget push notification to all subscribed staff devices
+  // Only fires for new website orders via this endpoint (not admin manual orders)
+  if (order) {
+    sendOrderPush({
+      id: order.id,
+      customer_name,
+      total: Number(total) - promoDiscount,
+      items_count: Array.isArray(items) ? items.length : undefined,
+    }).catch(() => {
+      /* non-critical — order already saved */
+    });
   }
 
   // Deduct wallet balance if used
