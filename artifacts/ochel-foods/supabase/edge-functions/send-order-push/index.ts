@@ -1,4 +1,4 @@
-// Supabase Edge Function: send-order-push
+// Supabase Edge/ Function: send-order-push
 // Triggered by a Supabase Database Webhook on INSERT to the `orders` table.
 // Reads all push subscriptions and sends a Web Push notification for the new order.
 

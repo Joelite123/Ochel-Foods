@@ -440,101 +440,19 @@ export default function CartPanel() {
   /* ── Place order to DB, then open WhatsApp confirmation ── */
   const handlePlaceOrder = async () => {
     if (!canCheckout) return;
-    setSavingOrder(true);
     setOrderError(null);
 
     const snapshotItems = [...items];
     const usedPromo = promoApplied;
     const usedPromoDiscount = promoDiscount;
 
-    const orderPayload = {
-      user_id: user?.id ?? null,
-      customer_name: form.name,
-      customer_phone: form.phone,
-      customer_email: form.email || null,
-      delivery_address: isPickup ? `PICK UP: ${STORE_ADDRESS}` : form.address,
-      delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
-      delivery_fee: isPickup ? 0 : deliveryFee,
-      subtotal,
-      total: finalTotal,
-      discount_amount: walletApplied + usedPromoDiscount,
-      referral_wallet_used: walletApplied,
-      promo_code: usedPromo?.code ?? null,
-      delivery_time: selectedSlot?.label ?? null,
-      delivery_date: deliveryDate,
-      special_instructions: form.instructions || null,
-      referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
-    };
+    // Generate the order ID upfront so we can include it in the WhatsApp message
+    // before the DB save completes.
+    const orderId = crypto.randomUUID();
+    const shortId = `#${orderId.slice(0, 8).toUpperCase()}`;
 
-    let newOrderId: string | null = null;
-
-    // Try API server first
-    try {
-      const res = await fetch(apiUrl("/api/orders"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...orderPayload,
-          items: snapshotItems.map((i) => ({
-            productId: i.productId || null,
-            name: i.name,
-            size: i.size || null,
-            price: i.price,
-            quantity: i.quantity,
-            extras: i.extras || null,
-            removedIngredients: i.removedIngredients || null,
-            note: i.note || null,
-          })),
-        }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        newOrderId = data.orderId;
-      }
-    } catch { /* API unreachable — fall through */ }
-
-    // Fallback: write directly to Supabase
-    if (!newOrderId) {
-      try {
-        const orderId = crypto.randomUUID();
-        const { error: orderErr } = await supabase
-          .from("orders")
-          .insert({ id: orderId, ...orderPayload, status: "unpaid" });
-
-        if (!orderErr) {
-          newOrderId = orderId;
-          if (snapshotItems.length) {
-            await supabase.from("order_items").insert(
-              snapshotItems.map((i) => ({
-                order_id: orderId,
-                product_id: i.productId || null,
-                product_name: i.name,
-                size: i.size || null,
-                price: i.price,
-                quantity: i.quantity,
-                extras: i.extras || null,
-                removed_ingredients: i.removedIngredients || null,
-                note: i.note || null,
-              }))
-            );
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    if (!newOrderId) {
-      setOrderError("Failed to place your order. Please try again or contact us on WhatsApp.");
-      setSavingOrder(false);
-      return;
-    }
-
-    // Order saved — open WhatsApp confirmation, then show success screen
-    setSavedOrderId(newOrderId);
-    setSavedFinalTotal(finalTotal);
-
-    // Build pre-filled WhatsApp message
-    const shortId = `#${newOrderId.slice(0, 8).toUpperCase()}`;
+    // Build and open WhatsApp immediately — must happen synchronously within
+    // the click handler so the browser treats it as a user-initiated popup.
     const deliveryLabel = isPickup ? "Pick Up" : "Delivery";
     const addressLine = isPickup ? `Pick Up at: ${STORE_ADDRESS}` : form.address;
     const dateLine = new Date(deliveryDate + "T12:00:00").toLocaleDateString("en-GB", {
@@ -569,9 +487,88 @@ export default function CartPanel() {
       "noopener,noreferrer"
     );
 
+    // Close the cart immediately — user is already on WhatsApp
     clearCart();
     setWalletApplied(0);
     handleRemovePromo();
+    setIsCartOpen(false);
+    setStep("cart");
+
+    // Save the order to DB in the background
+    setSavingOrder(true);
+
+    const orderPayload = {
+      user_id: user?.id ?? null,
+      customer_name: form.name,
+      customer_phone: form.phone,
+      customer_email: form.email || null,
+      delivery_address: isPickup ? `PICK UP: ${STORE_ADDRESS}` : form.address,
+      delivery_zone_id: isPickup ? null : (form.deliveryZoneId || null),
+      delivery_fee: isPickup ? 0 : deliveryFee,
+      subtotal,
+      total: finalTotal,
+      discount_amount: walletApplied + usedPromoDiscount,
+      referral_wallet_used: walletApplied,
+      promo_code: usedPromo?.code ?? null,
+      delivery_time: selectedSlot?.label ?? null,
+      delivery_date: deliveryDate,
+      special_instructions: form.instructions || null,
+      referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
+    };
+
+    let saved = false;
+
+    // Try API server first
+    try {
+      const res = await fetch(apiUrl("/api/orders"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: orderId,
+          ...orderPayload,
+          items: snapshotItems.map((i) => ({
+            productId: i.productId || null,
+            name: i.name,
+            size: i.size || null,
+            price: i.price,
+            quantity: i.quantity,
+            extras: i.extras || null,
+            removedIngredients: i.removedIngredients || null,
+            note: i.note || null,
+          })),
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) saved = true;
+    } catch { /* API unreachable — fall through */ }
+
+    // Fallback: write directly to Supabase
+    if (!saved) {
+      try {
+        const { error: orderErr } = await supabase
+          .from("orders")
+          .insert({ id: orderId, ...orderPayload, status: "unpaid" });
+
+        if (!orderErr) {
+          saved = true;
+          if (snapshotItems.length) {
+            await supabase.from("order_items").insert(
+              snapshotItems.map((i) => ({
+                order_id: orderId,
+                product_id: i.productId || null,
+                product_name: i.name,
+                size: i.size || null,
+                price: i.price,
+                quantity: i.quantity,
+                extras: i.extras || null,
+                removed_ingredients: i.removedIngredients || null,
+                note: i.note || null,
+              }))
+            );
+          }
+        }
+      } catch { /* ignore */ }
+    }
 
     /* Save delivery defaults to profile */
     if (user?.id && !isPickup && form.address) {
@@ -583,7 +580,6 @@ export default function CartPanel() {
 
     if (user?.id) refreshRewards();
     setSavingOrder(false);
-    setStep("success");
   };
 
   const handleProceedToCheckout = async () => {
