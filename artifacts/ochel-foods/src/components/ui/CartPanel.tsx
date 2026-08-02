@@ -152,6 +152,8 @@ export default function CartPanel() {
 
   /* ── Promo code state ── */
   const [activePromos, setActivePromos] = useState<DBPromotion[]>([]);
+  const [autoPromo, setAutoPromo] = useState<DBPromotion | null>(null);
+  const [promoIsAuto, setPromoIsAuto] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState<DBPromotion | null>(null);
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -234,9 +236,24 @@ export default function CartPanel() {
             return true;
           });
           setActivePromos(valid);
+          // Detect any promotion with no code — it applies automatically
+          const codeless = valid.find((p) => !p.code || p.code.trim() === "") ?? null;
+          setAutoPromo(codeless);
         }
       });
   }, []);
+
+  /* Auto-apply the codeless promotion whenever it changes or the subtotal changes.
+     Skip if the customer has already entered a manual promo code. */
+  useEffect(() => {
+    if (!autoPromo) return;
+    if (promoApplied && !promoIsAuto) return; // manual code in place — don't touch it
+    const disc = computePromoDiscount(autoPromo, subtotal);
+    setPromoApplied(autoPromo);
+    setPromoDiscount(disc);
+    setPromoIsAuto(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPromo, subtotal]);
 
   // Date validation helpers
   const isDateClosed = (dateStr: string): boolean => {
@@ -399,6 +416,7 @@ export default function CartPanel() {
     } else {
       const disc = computePromoDiscount(promo, subtotal);
       setPromoApplied(promo); setPromoDiscount(disc);
+      setPromoIsAuto(false); // mark as manually entered
       if (promo.discount_type === "free_product") {
         setPromoMsg(`🎁 ${promo.free_product_name || "Free product"} added to your order!`);
       } else {
@@ -410,8 +428,17 @@ export default function CartPanel() {
   };
 
   const handleRemovePromo = () => {
-    setPromoApplied(null); setPromoDiscount(0);
     setPromoCode(""); setPromoMsg(""); setPromoMsgValid(null);
+    // If an auto promo exists, restore it instead of clearing to zero
+    if (autoPromo) {
+      const disc = computePromoDiscount(autoPromo, subtotal);
+      setPromoApplied(autoPromo);
+      setPromoDiscount(disc);
+      setPromoIsAuto(true);
+    } else {
+      setPromoApplied(null); setPromoDiscount(0);
+      setPromoIsAuto(false);
+    }
   };
 
   /* ── Copy to clipboard ── */
@@ -1048,7 +1075,24 @@ export default function CartPanel() {
                   <label className="font-chewy text-lg text-gray-800 mb-1 block">
                     Promo Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
                   </label>
-                  {promoApplied ? (
+                  {/* Auto-discount notice — shown when a codeless promo is active */}
+                  {promoIsAuto && promoApplied && (
+                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 mb-2">
+                      <span className="text-base leading-none">🎉</span>
+                      <p className="text-xs font-[Montserrat] text-green-800">
+                        <span className="font-bold">
+                          {promoApplied.discount_type === "free_product"
+                            ? `Free ${promoApplied.free_product_name || "product"}`
+                            : `${formatPrice(promoDiscount)} off`}
+                        </span>
+                        {" "}automatically applied
+                        {promoApplied.title ? ` — ${promoApplied.title}` : ""}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Manual code pill — only when a code-based promo is applied */}
+                  {promoApplied && !promoIsAuto ? (
                     <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Ticket className="w-4 h-4 text-purple-600 flex-shrink-0" />
