@@ -95,6 +95,18 @@ function getHoursStatus(openHours: Record<number, number>, closeHour: number) {
 /* ─── Delivery zones from DB ─── */
 type DeliveryZoneDB = { id: string; label: string; price: number; description?: string };
 
+/* ─── Module-level session cache (same pattern as useMenuData.ts) ─── */
+type OperatingHoursCache = {
+  openMap: Record<number, number>;
+  closeMap: Record<number, number>;
+  closedDays: Set<number>;
+  closeHour: number;
+};
+let cachedDeliveryZones: DeliveryZoneDB[] | null = null;
+let cachedOperatingHours: OperatingHoursCache | null = null;
+let cachedPublicHolidayDates: string[] | null = null;
+let cachedPromos: DBPromotion[] | null = null;
+
 type CheckoutForm = {
   name: string;
   phone: string;
@@ -172,57 +184,84 @@ export default function CartPanel() {
   }, []);
 
   useEffect(() => {
-    // Delivery zones
-    supabase
-      .from("delivery_zones")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order")
-      .then(({ data }) => {
-        if (data?.length) {
-          setDeliveryZones(data as DeliveryZoneDB[]);
-          setDeliveryFee((data as DeliveryZoneDB[])[0].price);
-        }
-      });
+    // Apply cached delivery zones if available
+    if (cachedDeliveryZones) {
+      setDeliveryZones(cachedDeliveryZones);
+      setDeliveryFee(cachedDeliveryZones[0].price);
+    } else {
+      supabase
+        .from("delivery_zones")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order")
+        .then(({ data }) => {
+          if (data?.length) {
+            cachedDeliveryZones = data as DeliveryZoneDB[];
+            setDeliveryZones(cachedDeliveryZones);
+            setDeliveryFee(cachedDeliveryZones[0].price);
+          }
+        });
+    }
 
-    // Operating hours (per day open/close)
-    supabase
-      .from("operating_hours")
-      .select("*")
-      .order("day_of_week")
-      .then(({ data }) => {
-        if (data?.length) {
-          const openMap: Record<number, number> = {};
-          const closeMap: Record<number, number> = {};
-          const closed = new Set<number>();
-          (data as any[]).forEach((h) => {
-            if (h.is_closed) {
-              closed.add(h.day_of_week);
-            } else {
-              openMap[h.day_of_week] = h.open_hour;
-              closeMap[h.day_of_week] = h.close_hour ?? CLOSE_HOUR_FALLBACK;
-            }
-          });
-          if (Object.keys(openMap).length) setOpenHours(openMap);
-          setCloseHoursMap(closeMap);
-          setClosedDays(closed);
-          const maxClose = Math.max(...Object.values(closeMap), CLOSE_HOUR_FALLBACK);
-          setCloseHour(maxClose);
-        }
-      });
+    // Apply cached operating hours if available
+    if (cachedOperatingHours) {
+      if (Object.keys(cachedOperatingHours.openMap).length) setOpenHours(cachedOperatingHours.openMap);
+      setCloseHoursMap(cachedOperatingHours.closeMap);
+      setClosedDays(cachedOperatingHours.closedDays);
+      setCloseHour(cachedOperatingHours.closeHour);
+    } else {
+      supabase
+        .from("operating_hours")
+        .select("*")
+        .order("day_of_week")
+        .then(({ data }) => {
+          if (data?.length) {
+            const openMap: Record<number, number> = {};
+            const closeMap: Record<number, number> = {};
+            const closed = new Set<number>();
+            (data as any[]).forEach((h) => {
+              if (h.is_closed) {
+                closed.add(h.day_of_week);
+              } else {
+                openMap[h.day_of_week] = h.open_hour;
+                closeMap[h.day_of_week] = h.close_hour ?? CLOSE_HOUR_FALLBACK;
+              }
+            });
+            const maxClose = Math.max(...Object.values(closeMap), CLOSE_HOUR_FALLBACK);
+            cachedOperatingHours = { openMap, closeMap, closedDays: closed, closeHour: maxClose };
+            if (Object.keys(openMap).length) setOpenHours(openMap);
+            setCloseHoursMap(closeMap);
+            setClosedDays(closed);
+            setCloseHour(maxClose);
+          }
+        });
+    }
 
-    // Public holidays (closed ones only)
-    supabase
-      .from("public_holidays")
-      .select("date")
-      .eq("is_closed", true)
-      .then(({ data }) => {
-        if (data) setPublicHolidayDates((data as { date: string }[]).map((h) => h.date));
-      });
+    // Apply cached public holidays if available
+    if (cachedPublicHolidayDates) {
+      setPublicHolidayDates(cachedPublicHolidayDates);
+    } else {
+      supabase
+        .from("public_holidays")
+        .select("date")
+        .eq("is_closed", true)
+        .then(({ data }) => {
+          if (data) {
+            cachedPublicHolidayDates = (data as { date: string }[]).map((h) => h.date);
+            setPublicHolidayDates(cachedPublicHolidayDates);
+          }
+        });
+    }
   }, []);
 
-  /* Fetch active promos once on mount */
+  /* Fetch active promos once per session */
   useEffect(() => {
+    if (cachedPromos) {
+      setActivePromos(cachedPromos);
+      const codeless = cachedPromos.find((p) => !p.code || p.code.trim() === "") ?? null;
+      setAutoPromo(codeless);
+      return;
+    }
     supabase
       .from("promotions")
       .select("*")
@@ -235,6 +274,7 @@ export default function CartPanel() {
             if (p.ends_at && new Date(p.ends_at) < now) return false;
             return true;
           });
+          cachedPromos = valid;
           setActivePromos(valid);
           // Detect any promotion with no code — it applies automatically
           const codeless = valid.find((p) => !p.code || p.code.trim() === "") ?? null;
