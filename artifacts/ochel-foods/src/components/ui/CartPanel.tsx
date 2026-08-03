@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 
 import { supabase } from "@/lib/supabase";
 import type { DBPromotion } from "@/lib/supabase";
+import { getActivePromos } from "@/lib/promosCache";
 import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -105,7 +106,6 @@ type OperatingHoursCache = {
 let cachedDeliveryZones: DeliveryZoneDB[] | null = null;
 let cachedOperatingHours: OperatingHoursCache | null = null;
 let cachedPublicHolidayDates: string[] | null = null;
-let cachedPromos: DBPromotion[] | null = null;
 
 type CheckoutForm = {
   name: string;
@@ -254,33 +254,14 @@ export default function CartPanel() {
     }
   }, []);
 
-  /* Fetch active promos once per session */
+  /* Fetch active promos once per session — reads from shared promosCache */
   useEffect(() => {
-    if (cachedPromos) {
-      setActivePromos(cachedPromos);
-      const codeless = cachedPromos.find((p) => !p.code || p.code.trim() === "") ?? null;
+    getActivePromos().then((valid) => {
+      setActivePromos(valid);
+      // Detect any promotion with no code — it applies automatically
+      const codeless = valid.find((p) => !p.code || p.code.trim() === "") ?? null;
       setAutoPromo(codeless);
-      return;
-    }
-    supabase
-      .from("promotions")
-      .select("*")
-      .eq("is_active", true)
-      .then(({ data }) => {
-        if (data) {
-          const now = new Date();
-          const valid = (data as DBPromotion[]).filter((p) => {
-            if (p.starts_at && new Date(p.starts_at) > now) return false;
-            if (p.ends_at && new Date(p.ends_at) < now) return false;
-            return true;
-          });
-          cachedPromos = valid;
-          setActivePromos(valid);
-          // Detect any promotion with no code — it applies automatically
-          const codeless = valid.find((p) => !p.code || p.code.trim() === "") ?? null;
-          setAutoPromo(codeless);
-        }
-      });
+    });
   }, []);
 
   /* Auto-apply the codeless promotion whenever it changes or the subtotal changes.

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Tag, ChevronLeft, ChevronRight, Gift } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase, DBPromotion } from "@/lib/supabase";
+import type { DBPromotion } from "@/lib/supabase";
+import { getActivePromos } from "@/lib/promosCache";
 
 const SLIDE_INTERVAL = 5000;
 
@@ -16,22 +17,9 @@ export default function PromoBanner() {
     const stored = localStorage.getItem("dismissed-banners");
     if (stored) setDismissed(new Set(JSON.parse(stored)));
 
-    supabase
-      .from("promotions")
-      .select("*")
-      .eq("is_active", true)
-      .then(({ data }) => {
-        if (data) {
-          const now = new Date();
-          const active = (data as DBPromotion[]).filter((p) => {
-            if (!p.banner_url) return false;
-            if (p.starts_at && new Date(p.starts_at) > now) return false;
-            if (p.ends_at && new Date(p.ends_at) < now) return false;
-            return true;
-          });
-          setBanners(active);
-        }
-      });
+    getActivePromos().then((promos) => {
+      setBanners(promos.filter((p) => !!p.banner_url));
+    });
   }, []);
 
   const visible = banners.filter((b) => !dismissed.has(b.id));
