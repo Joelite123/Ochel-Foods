@@ -38,22 +38,29 @@ export default function AdminCustomers() {
       }
     } catch { /* API unreachable — fall through */ }
 
-    // Fallback: single joined query — no N+1
+    // Fallback: three separate batch queries to avoid RLS blocking nested joins
     const { data: profiles } = await supabase
       .from("profiles")
-      .select(`*, orders(total), referral_codes(code, total_referrals)`)
+      .select("*")
       .eq("role", "customer")
       .order("created_at", { ascending: false });
 
-    if (!profiles) { setLoading(false); return; }
+    if (!profiles || profiles.length === 0) { setLoading(false); return; }
 
-    const enriched: CustomerData[] = (profiles as any[]).map((p) => {
-      const orders: { total: number }[] = p.orders ?? [];
-      const ref = Array.isArray(p.referral_codes) ? p.referral_codes[0] : p.referral_codes;
+    const profileIds = profiles.map((p) => p.id);
+
+    const [{ data: orders }, { data: refs }] = await Promise.all([
+      supabase.from("orders").select("user_id, total").in("user_id", profileIds),
+      supabase.from("referral_codes").select("user_id, code, total_referrals").in("user_id", profileIds),
+    ]);
+
+    const enriched: CustomerData[] = profiles.map((p) => {
+      const userOrders = (orders ?? []).filter((o) => o.user_id === p.id);
+      const ref = (refs ?? []).find((r) => r.user_id === p.id);
       return {
         ...p,
-        orderCount: orders.length,
-        totalSpent: orders.reduce((s, o) => s + Number(o.total), 0),
+        orderCount: userOrders.length,
+        totalSpent: userOrders.reduce((s, o) => s + Number(o.total), 0),
         referralCode: ref?.code,
         referralCount: ref?.total_referrals ?? 0,
       };
