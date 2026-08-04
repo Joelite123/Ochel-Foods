@@ -63,8 +63,8 @@ self.addEventListener("push", (event) => {
     badge: "/icons/badge-96.png",
     data: { url: payload.url || "/admin/orders" },
     tag: payload.tag || "new-order",
-    requireInteraction: true,
-    vibrate: [200, 100, 200],
+    // requireInteraction and vibrate are Android-only — omitting them keeps
+    // the notification working correctly on both Android and iOS 16.4+.
   });
 
   event.waitUntil(show);
