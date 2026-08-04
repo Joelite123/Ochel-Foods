@@ -5,7 +5,6 @@ import {
 import { supabase, DBOrder, DBOrderTimeline } from "@/lib/supabase";
 import { getRewardSettings } from "@/lib/rewardSettingsCache";
 import { formatPrice } from "@/data/menuData";
-import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 import { useNotifications } from "@/contexts/NotificationContext";
 import ManualOrderModal from "@/components/ui/ManualOrderModal";
@@ -311,18 +310,6 @@ export default function AdminOrders() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/orders"), { signal: AbortSignal.timeout(4000) });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setOrders(data as OrderWithItems[]);
-          setLoading(false);
-          return;
-        }
-      }
-    } catch { /* fall through to Supabase */ }
-
-    try {
       const { data, error } = await supabase
         .from("orders")
         .select("*, order_items(*), delivery_zones(label, price)")
@@ -416,28 +403,14 @@ export default function AdminOrders() {
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(orderId);
 
-    let updated = false;
-    try {
-      const res = await fetch(apiUrl(`/api/orders/${orderId}/status`), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-        signal: AbortSignal.timeout(4000),
-      });
-      if (res.ok) updated = true;
-    } catch { /* fall through */ }
-
-    if (!updated) {
-      const { error } = await supabase
-        .from("orders")
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq("id", orderId);
-      if (error) {
-        toast.error("Failed to update status");
-        setUpdating(null);
-        return;
-      }
-      updated = true;
+    const { error } = await supabase
+      .from("orders")
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+    if (error) {
+      toast.error("Failed to update status");
+      setUpdating(null);
+      return;
     }
 
     setUpdating(null);

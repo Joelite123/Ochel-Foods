@@ -8,7 +8,6 @@ import { useMenuData } from "@/hooks/useMenuData";
 import {
   formatPrice, comboDealProducts, type ComboProduct,
 } from "@/data/menuData";
-import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -310,47 +309,25 @@ export default function ManualOrderModal({ onClose, onOrderCreated }: Props) {
       note: i.note || null,
     }));
 
-    let newOrderId: string | null = null;
+    const newOrderId = crypto.randomUUID();
+    const { error: orderErr } = await supabase
+      .from("orders")
+      .insert({ id: newOrderId, ...orderPayload, status: "unpaid" });
 
-    /* Try API first (identical to CartPanel) */
-    try {
-      const res = await fetch(apiUrl("/api/orders"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...orderPayload, items: itemsPayload }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        newOrderId = data.orderId;
-      }
-    } catch { /* fall through */ }
-
-    /* Supabase fallback */
-    if (!newOrderId) {
-      const orderId = crypto.randomUUID();
-      const { error: orderErr } = await supabase
-        .from("orders")
-        .insert({ id: orderId, ...orderPayload, status: "unpaid" });
-
-      if (!orderErr) {
-        newOrderId = orderId;
-        if (cartItems.length) {
-          await supabase.from("order_items").insert(
-            cartItems.map((i) => ({
-              order_id: orderId,
-              product_id: i.productId || null,
-              product_name: i.name,
-              size: i.size || null,
-              price: i.price,
-              quantity: i.quantity,
-              extras: i.extras || null,
-              removed_ingredients: null,
-              note: i.note || null,
-            }))
-          );
-        }
-      }
+    if (!orderErr && cartItems.length) {
+      await supabase.from("order_items").insert(
+        cartItems.map((i) => ({
+          order_id: newOrderId,
+          product_id: i.productId || null,
+          product_name: i.name,
+          size: i.size || null,
+          price: i.price,
+          quantity: i.quantity,
+          extras: i.extras || null,
+          removed_ingredients: null,
+          note: i.note || null,
+        }))
+      );
     }
 
     if (!newOrderId) {
@@ -359,25 +336,12 @@ export default function ManualOrderModal({ onClose, onOrderCreated }: Props) {
       return;
     }
 
-    /* Update status if not "unpaid" (API defaults to unpaid) */
+    /* Update status if not "unpaid" */
     if (orderStatus !== "unpaid") {
-      let patched = false;
-      try {
-        const res = await fetch(apiUrl(`/api/orders/${newOrderId}/status`), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: orderStatus }),
-          signal: AbortSignal.timeout(4000),
-        });
-        if (res.ok) patched = true;
-      } catch { /* fall through */ }
-
-      if (!patched) {
-        await supabase
-          .from("orders")
-          .update({ status: orderStatus, updated_at: new Date().toISOString() })
-          .eq("id", newOrderId);
-      }
+      await supabase
+        .from("orders")
+        .update({ status: orderStatus, updated_at: new Date().toISOString() })
+        .eq("id", newOrderId);
     }
 
     /* Fetch the fully-hydrated order to hand back to the orders list */

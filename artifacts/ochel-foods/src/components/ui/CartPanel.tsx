@@ -3,7 +3,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DBPromotion } from "@/lib/supabase";
 import { getActivePromos } from "@/lib/promosCache";
-import { apiUrl } from "@/lib/api";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Minus, Plus, Trash2, ShoppingBag, ArrowLeft, ChevronDown,
@@ -564,59 +563,28 @@ export default function CartPanel() {
       referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
     };
 
-    let saved = false;
-
-    // Try API server first
+    // Save directly to Supabase
     try {
-      const res = await fetch(apiUrl("/api/orders"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: orderId,
-          ...orderPayload,
-          items: snapshotItems.map((i) => ({
-            productId: i.productId || null,
-            name: i.name,
+      const { error: orderErr } = await supabase
+        .from("orders")
+        .insert({ id: orderId, ...orderPayload, status: "unpaid" });
+
+      if (!orderErr && snapshotItems.length) {
+        await supabase.from("order_items").insert(
+          snapshotItems.map((i) => ({
+            order_id: orderId,
+            product_id: i.productId || null,
+            product_name: i.name,
             size: i.size || null,
             price: i.price,
             quantity: i.quantity,
             extras: i.extras || null,
-            removedIngredients: i.removedIngredients || null,
+            removed_ingredients: i.removedIngredients || null,
             note: i.note || null,
-          })),
-        }),
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) saved = true;
-    } catch { /* API unreachable — fall through */ }
-
-    // Fallback: write directly to Supabase
-    if (!saved) {
-      try {
-        const { error: orderErr } = await supabase
-          .from("orders")
-          .insert({ id: orderId, ...orderPayload, status: "unpaid" });
-
-        if (!orderErr) {
-          saved = true;
-          if (snapshotItems.length) {
-            await supabase.from("order_items").insert(
-              snapshotItems.map((i) => ({
-                order_id: orderId,
-                product_id: i.productId || null,
-                product_name: i.name,
-                size: i.size || null,
-                price: i.price,
-                quantity: i.quantity,
-                extras: i.extras || null,
-                removed_ingredients: i.removedIngredients || null,
-                note: i.note || null,
-              }))
-            );
-          }
-        }
-      } catch { /* ignore */ }
-    }
+          }))
+        );
+      }
+    } catch { /* ignore */ }
 
     /* Save delivery defaults to profile */
     if (user?.id && !isPickup && form.address) {
