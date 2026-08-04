@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase, DBUserReward, DBReferralCode, DBRewardSetting } from "@/lib/supabase";
+import { getRewardSettings } from "@/lib/rewardSettingsCache";
 import { useAuth } from "@/contexts/AuthContext";
 
 type RewardContextType = {
@@ -71,12 +72,8 @@ export function RewardProvider({ children }: { children: ReactNode }) {
     }
 
     // Load reward settings
-    const { data: rsData } = await supabase
-      .from("reward_settings")
-      .select("*")
-      .eq("reward_type", "cash_credit")
-      .single();
-    if (rsData) setRewardSettings(rsData as DBRewardSetting);
+    const rsData = await getRewardSettings();
+    if (rsData) setRewardSettings(rsData);
 
     setIsLoading(false);
   };

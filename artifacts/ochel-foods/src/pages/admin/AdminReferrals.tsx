@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Check, X, Eye, Settings, Wallet, AlertTriangle } from "lucide-react";
 import { supabase, DBReferral, DBUserReward, DBRewardSetting } from "@/lib/supabase";
+import { getRewardSettings, invalidateRewardSettingsCache } from "@/lib/rewardSettingsCache";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
 
@@ -45,9 +46,9 @@ export default function AdminReferrals() {
   };
 
   const loadSettings = async () => {
-    const { data } = await supabase.from("reward_settings").select("*").eq("reward_type", "cash_credit").single();
+    const data = await getRewardSettings();
     if (data) {
-      setSettings(data as DBRewardSetting);
+      setSettings(data);
       setSettingsForm({
         reward_value: data.reward_value,
         expiry_days: data.expiry_days,
@@ -86,6 +87,7 @@ export default function AdminReferrals() {
     }
     setSavingSettings(false);
     toast.success("Reward settings saved");
+    invalidateRewardSettingsCache();
     loadSettings();
   };
 

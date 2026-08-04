@@ -3,6 +3,7 @@ import {
   Search, RefreshCw, Eye, X, Download, Printer, Filter, Plus,
 } from "lucide-react";
 import { supabase, DBOrder, DBOrderTimeline } from "@/lib/supabase";
+import { getRewardSettings } from "@/lib/rewardSettingsCache";
 import { formatPrice } from "@/data/menuData";
 import { apiUrl } from "@/lib/api";
 import { toast } from "sonner";
@@ -54,12 +55,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
 
   if (existing && existing.length > 0) return;
 
-  const { data: settings } = await supabase
-    .from("reward_settings")
-    .select("*")
-    .eq("reward_type", "cash_credit")
-    .eq("is_active", true)
-    .single();
+  const settings = await getRewardSettings();
 
   const rewardAmount = settings?.reward_value ?? 2000;
   const expiryDays = settings?.expiry_days ?? 60;
