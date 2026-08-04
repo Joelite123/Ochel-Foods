@@ -113,9 +113,9 @@ export default function AdminAnalytics() {
       });
   }, []);
 
-  /* ── Confirmed-only subsets (derived client-side, no extra DB reads) ── */
-  const confirmedOrders = useMemo(() => orders.filter((o) => o.status === "confirmed"), [orders]);
-  const confirmedAllOrders = useMemo(() => allOrders.filter((o) => o.status === "confirmed"), [allOrders]);
+  /* ── Revenue-counted subsets: exclude cancelled and unpaid only ── */
+  const confirmedOrders = useMemo(() => orders.filter((o) => !["cancelled", "unpaid"].includes(o.status)), [orders]);
+  const confirmedAllOrders = useMemo(() => allOrders.filter((o) => !["cancelled", "unpaid"].includes(o.status)), [allOrders]);
 
   /* ── Existing computed values (unchanged) ── */
   const revenueData = (() => {

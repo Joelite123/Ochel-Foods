@@ -41,15 +41,18 @@ export default function AdminOverview() {
 
       const orders = (allOrders as DBOrder[]) || [];
 
+      // Only count revenue from orders that are not cancelled or unpaid
+      const isRevenue = (o: DBOrder) => !["cancelled", "unpaid"].includes(o.status);
+
       // Stats
       const todayOrders = orders.filter((o) => new Date(o.created_at) >= todayStart);
       const pendingOrders = orders.filter((o) => ["unpaid", "confirmed", "preparing", "out_for_delivery"].includes(o.status));
 
       setStats({
         todayOrders: todayOrders.length,
-        todayRevenue: todayOrders.reduce((s, o) => s + Number(o.total), 0),
+        todayRevenue: todayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
         weekOrders: orders.length,
-        weekRevenue: orders.reduce((s, o) => s + Number(o.total), 0),
+        weekRevenue: orders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
         totalCustomers: customerCount || 0,
         pendingOrders: pendingOrders.length,
       });
@@ -67,7 +70,7 @@ export default function AdminOverview() {
         });
         days.push({
           date: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-          revenue: dayOrders.reduce((s, o) => s + Number(o.total), 0),
+          revenue: dayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
           orders: dayOrders.length,
         });
       }
