@@ -38,30 +38,26 @@ export default function AdminCustomers() {
       }
     } catch { /* API unreachable — fall through */ }
 
-    // Fallback: direct Supabase (requires admin SELECT policy on profiles)
+    // Fallback: single joined query — no N+1
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("*")
+      .select(`*, orders(total), referral_codes(code, total_referrals)`)
       .eq("role", "customer")
       .order("created_at", { ascending: false });
 
     if (!profiles) { setLoading(false); return; }
 
-    const enriched: CustomerData[] = await Promise.all(
-      (profiles as Profile[]).map(async (p) => {
-        const [{ data: orders }, { data: ref }] = await Promise.all([
-          supabase.from("orders").select("total").eq("user_id", p.id),
-          supabase.from("referral_codes").select("code, total_referrals").eq("user_id", p.id).single(),
-        ]);
-        return {
-          ...p,
-          orderCount: orders?.length ?? 0,
-          totalSpent: orders?.reduce((s, o) => s + Number(o.total), 0) ?? 0,
-          referralCode: ref?.code,
-          referralCount: ref?.total_referrals ?? 0,
-        };
-      })
-    );
+    const enriched: CustomerData[] = (profiles as any[]).map((p) => {
+      const orders: { total: number }[] = p.orders ?? [];
+      const ref = Array.isArray(p.referral_codes) ? p.referral_codes[0] : p.referral_codes;
+      return {
+        ...p,
+        orderCount: orders.length,
+        totalSpent: orders.reduce((s, o) => s + Number(o.total), 0),
+        referralCode: ref?.code,
+        referralCount: ref?.total_referrals ?? 0,
+      };
+    });
     setCustomers(enriched);
     setLoading(false);
   };
