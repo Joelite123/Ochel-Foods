@@ -33,10 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Prevents fetchProfile being called twice on app load — once from
+    // getSession and again from the onAuthStateChange event for the same
+    // session. Reset to false after the first event so future sign-ins work.
+    let initialSessionHandled = false;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+        initialSessionHandled = true;
+      }
       setIsLoading(false);
     });
 
@@ -44,7 +52,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchProfile(session.user.id);
+        if (initialSessionHandled) {
+          // Skip — getSession already fetched the profile for this session
+          initialSessionHandled = false;
+        } else {
+          fetchProfile(session.user.id);
+        }
       } else {
         setProfile(null);
       }
