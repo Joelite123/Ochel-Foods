@@ -570,7 +570,7 @@ export default function CartPanel() {
         .insert({ id: orderId, ...orderPayload, status: "unpaid" });
 
       if (!orderErr && snapshotItems.length) {
-        await supabase.from("order_items").insert(
+        const { error: itemsErr } = await supabase.from("order_items").insert(
           snapshotItems.map((i) => ({
             order_id: orderId,
             product_id: i.productId || null,
@@ -583,6 +583,7 @@ export default function CartPanel() {
             note: i.note || null,
           }))
         );
+        if (itemsErr) console.error("[CartPanel] order_items insert failed:", itemsErr.message);
       }
     } catch { /* ignore */ }
 

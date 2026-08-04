@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { supabase, DBOrder, DBOrderItem } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
+import { toast } from "sonner";
 import {
   TrendingUp, Users, ShoppingBag, MousePointerClick, Download,
   Award, Star, Trophy,
@@ -65,7 +66,7 @@ export default function AdminAnalytics() {
       const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
       const since = new Date(); since.setDate(since.getDate() - days);
 
-      const [{ data: ordersData }, { data: visitsData }] = await Promise.all([
+      const [{ data: ordersData, error: ordersErr }, { data: visitsData }] = await Promise.all([
         supabase
           .from("orders")
           .select("*")
@@ -77,6 +78,7 @@ export default function AdminAnalytics() {
           .gte("visited_at", since.toISOString()),
       ]);
 
+      if (ordersErr) toast.error("Could not load analytics data");
       if (ordersData) setOrders(ordersData as DBOrder[]);
 
       const visitMap = new Map<string, number>();
@@ -107,7 +109,8 @@ export default function AdminAnalytics() {
       .from("orders")
       .select("*, order_items(*)")
       .order("created_at", { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) toast.error("Could not load product analytics");
         if (data) setAllOrders(data as OrderWithItems[]);
         setAllLoading(false);
       });

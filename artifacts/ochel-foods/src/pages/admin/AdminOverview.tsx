@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { supabase, DBOrder } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
+import { toast } from "sonner";
 import PinGuard from "@/components/ui/PinGuard";
 
 type Stats = {
@@ -34,11 +35,12 @@ export default function AdminOverview() {
       const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
       const weekStart = new Date(now); weekStart.setDate(now.getDate() - 6); weekStart.setHours(0, 0, 0, 0);
 
-      const [{ data: allOrders }, { count: customerCount }] = await Promise.all([
+      const [{ data: allOrders, error: ordersErr }, { count: customerCount }] = await Promise.all([
         supabase.from("orders").select("*").gte("created_at", weekStart.toISOString()).order("created_at"),
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("role", "customer"),
       ]);
 
+      if (ordersErr) toast.error("Could not load overview data");
       const orders = (allOrders as DBOrder[]) || [];
 
       // Only count revenue from orders that are not cancelled or unpaid
@@ -77,8 +79,9 @@ export default function AdminOverview() {
       setChartData(days);
 
       // Recent orders (all time, last 8)
-      const { data: recent } = await supabase
+      const { data: recent, error: recentErr } = await supabase
         .from("orders").select("*").order("created_at", { ascending: false }).limit(8);
+      if (recentErr) toast.error("Could not load recent orders");
       setRecentOrders((recent as DBOrder[]) || []);
 
       setLoading(false);

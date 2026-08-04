@@ -34,10 +34,11 @@ export default function AdminPromotions() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: promoData }, { data: prodData }] = await Promise.all([
+    const [{ data: promoData, error: promosErr }, { data: prodData }] = await Promise.all([
       supabase.from("promotions").select("*").order("created_at", { ascending: false }),
       supabase.from("products").select("id, name, base_price, category_id").order("name"),
     ]);
+    if (promosErr) toast.error("Could not load promotions");
     if (promoData) setPromos(promoData as DBPromotion[]);
     if (prodData) setProducts(prodData as SimpleProduct[]);
     setLoading(false);

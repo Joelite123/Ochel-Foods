@@ -314,8 +314,14 @@ export default function ManualOrderModal({ onClose, onOrderCreated }: Props) {
       .from("orders")
       .insert({ id: newOrderId, ...orderPayload, status: "unpaid" });
 
-    if (!orderErr && cartItems.length) {
-      await supabase.from("order_items").insert(
+    if (orderErr) {
+      setError("Failed to save order. Please try again.");
+      setSaving(false);
+      return;
+    }
+
+    if (cartItems.length) {
+      const { error: itemsErr } = await supabase.from("order_items").insert(
         cartItems.map((i) => ({
           order_id: newOrderId,
           product_id: i.productId || null,
@@ -328,12 +334,7 @@ export default function ManualOrderModal({ onClose, onOrderCreated }: Props) {
           note: i.note || null,
         }))
       );
-    }
-
-    if (!newOrderId) {
-      setError("Failed to save order. Please try again.");
-      setSaving(false);
-      return;
+      if (itemsErr) toast.error("Order saved but items failed to attach — please check it in Orders.");
     }
 
     /* Update status if not "unpaid" */

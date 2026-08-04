@@ -19,7 +19,8 @@ export default function AdminReferrals() {
 
   const loadReferrals = async () => {
     setLoading(true);
-    const { data } = await supabase.from("referrals").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("referrals").select("*").order("created_at", { ascending: false });
+    if (error) { toast.error("Could not load referrals"); setLoading(false); return; }
     if (data) {
       // Enrich with profile names
       const enriched = await Promise.all((data as DBReferral[]).map(async (r) => {
@@ -35,7 +36,8 @@ export default function AdminReferrals() {
   };
 
   const loadTransactions = async () => {
-    const { data } = await supabase.from("user_rewards").select("*").order("created_at", { ascending: false }).limit(100);
+    const { data, error } = await supabase.from("user_rewards").select("*").order("created_at", { ascending: false }).limit(100);
+    if (error) { toast.error("Could not load wallet transactions"); return; }
     if (data) {
       const enriched = await Promise.all((data as DBUserReward[]).map(async (t) => {
         const { data: p } = await supabase.from("profiles").select("email").eq("id", t.user_id).single();
@@ -60,7 +62,8 @@ export default function AdminReferrals() {
   };
 
   const loadAbuseLog = async () => {
-    const { data } = await supabase.from("referral_abuse_log").select("*").order("created_at", { ascending: false }).limit(50);
+    const { data, error } = await supabase.from("referral_abuse_log").select("*").order("created_at", { ascending: false }).limit(50);
+    if (error) { toast.error("Could not load abuse log"); return; }
     if (data) setAbuseLog(data);
   };
 

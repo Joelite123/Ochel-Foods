@@ -32,10 +32,11 @@ export default function AdminProducts() {
   const [ingInput, setIngInput] = useState("");
 
   const load = async () => {
-    const [{ data: prods }, { data: cats }] = await Promise.all([
+    const [{ data: prods, error: prodsErr }, { data: cats, error: catsErr }] = await Promise.all([
       supabase.from("products").select("*").order("sort_order"),
       supabase.from("categories").select("*").order("sort_order"),
     ]);
+    if (prodsErr || catsErr) toast.error("Could not load products");
     if (prods) setProducts(prods as DBProduct[]);
     if (cats) setCategories(cats as DBCategory[]);
   };
