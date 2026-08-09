@@ -369,11 +369,16 @@ export default function AdminOrders() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
-        (payload) => {
+        async (payload) => {
           const newOrder = payload.new as OrderWithItems;
+          const { data: items } = await supabase
+            .from("order_items")
+            .select("*")
+            .eq("order_id", newOrder.id);
+
           setOrders((prev) => {
             if (prev.find((o) => o.id === newOrder.id)) return prev;
-            return [newOrder, ...prev];
+            return [{ ...newOrder, order_items: items ?? [] }, ...prev];
           });
         }
       )

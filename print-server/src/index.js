@@ -62,6 +62,8 @@ async function handleOrder(order) {
   console.log(`\n>>> NEW ORDER #${short} — ${order.customer_name} (${order.customer_phone})`);
 
   try {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     const { data: items, error } = await supabase
       .from("order_items")
       .select("*")

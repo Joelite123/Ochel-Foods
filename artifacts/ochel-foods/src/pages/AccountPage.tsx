@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRewards } from "@/contexts/RewardContext";
-import { supabase, DBOrder } from "@/lib/supabase";
+import { supabase, DBOrder, DBReferralCode } from "@/lib/supabase";
 import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
 
@@ -15,13 +15,15 @@ type Tab = "overview" | "orders" | "rewards" | "referral";
 
 export default function AccountPage() {
   const { user, profile, signOut, refreshProfile } = useAuth();
-  const { referralCode, walletBalance, activeRewards, generateReferralCode, isLoading } = useRewards();
+  const { referralCode: contextReferralCode, walletBalance, activeRewards, generateReferralCode, isLoading } = useRewards();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("overview");
   type OrderWithItems = DBOrder & { order_items?: import("@/lib/supabase").DBOrderItem[] };
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [referralCodeOverride, setReferralCodeOverride] = useState<DBReferralCode | null>(null);
+  const referralCode = referralCodeOverride ?? contextReferralCode;
 
   useEffect(() => {
     if (!user) navigate("/login");
@@ -53,8 +55,17 @@ export default function AccountPage() {
     setGenerating(true);
     const code = await generateReferralCode();
     setGenerating(false);
-    if (code) toast.success("Your referral code is ready!");
-    else toast.error("Could not generate code. Please try again.");
+    if (code) {
+      const { data: fresh } = await supabase
+        .from("referral_codes")
+        .select("*")
+        .eq("user_id", user!.id)
+        .single();
+      if (fresh) setReferralCodeOverride(fresh as DBReferralCode);
+      toast.success("Your referral code is ready!");
+    } else {
+      toast.error("Could not generate code. Please try again.");
+    }
   };
 
   const handleSignOut = async () => {
