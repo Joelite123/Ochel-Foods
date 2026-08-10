@@ -97,12 +97,14 @@ export function RewardProvider({ children }: { children: ReactNode }) {
     if (!user) return null;
     for (let i = 0; i < 5; i++) {
       const code = Math.random().toString(36).toUpperCase().slice(2, 8);
-      const { error } = await supabase
+      const { data: created, error } = await supabase
         .from("referral_codes")
-        .insert({ user_id: user.id, code });
-      if (!error) {
-        await loadData();
-        return code;
+        .insert({ user_id: user.id, code })
+        .select("*")
+        .single();
+      if (!error && created) {
+        setReferralCode(created as DBReferralCode);
+        return (created as DBReferralCode).code;
       }
     }
     return null;
