@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ShoppingBag, DollarSign, Users, TrendingUp, Clock } from "lucide-react";
+import { ShoppingBag, DollarSign, Users, TrendingUp, Clock, Truck } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, CartesianGrid,
@@ -12,18 +12,20 @@ import PinGuard from "@/components/ui/PinGuard";
 type Stats = {
   todayOrders: number;
   todayRevenue: number;
+  todayDeliveryRevenue: number;
   weekOrders: number;
   weekRevenue: number;
+  weekDeliveryRevenue: number;
   totalCustomers: number;
   pendingOrders: number;
 };
 
-type ChartPoint = { date: string; revenue: number; orders: number };
+type ChartPoint = { date: string; revenue: number; deliveryRevenue: number; orders: number };
 
 export default function AdminOverview() {
   const [stats, setStats] = useState<Stats>({
-    todayOrders: 0, todayRevenue: 0, weekOrders: 0,
-    weekRevenue: 0, totalCustomers: 0, pendingOrders: 0,
+    todayOrders: 0, todayRevenue: 0, todayDeliveryRevenue: 0, weekOrders: 0,
+    weekRevenue: 0, weekDeliveryRevenue: 0, totalCustomers: 0, pendingOrders: 0,
   });
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [recentOrders, setRecentOrders] = useState<DBOrder[]>([]);
@@ -52,9 +54,11 @@ export default function AdminOverview() {
 
       setStats({
         todayOrders: todayOrders.length,
-        todayRevenue: todayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
+        todayRevenue: todayOrders.filter(isRevenue).reduce((s, o) => s + (Number(o.total) - Number(o.delivery_fee || 0)), 0),
+        todayDeliveryRevenue: todayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.delivery_fee || 0), 0),
         weekOrders: orders.length,
-        weekRevenue: orders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
+        weekRevenue: orders.filter(isRevenue).reduce((s, o) => s + (Number(o.total) - Number(o.delivery_fee || 0)), 0),
+        weekDeliveryRevenue: orders.filter(isRevenue).reduce((s, o) => s + Number(o.delivery_fee || 0), 0),
         totalCustomers: customerCount || 0,
         pendingOrders: pendingOrders.length,
       });
@@ -72,7 +76,8 @@ export default function AdminOverview() {
         });
         days.push({
           date: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-          revenue: dayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.total), 0),
+          revenue: dayOrders.filter(isRevenue).reduce((s, o) => s + (Number(o.total) - Number(o.delivery_fee || 0)), 0),
+          deliveryRevenue: dayOrders.filter(isRevenue).reduce((s, o) => s + Number(o.delivery_fee || 0), 0),
           orders: dayOrders.length,
         });
       }
@@ -104,8 +109,9 @@ export default function AdminOverview() {
 
   const cards = [
     { label: "Today's Orders", value: stats.todayOrders, sub: "orders placed today", icon: ShoppingBag, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: "Today's Revenue", value: formatPrice(stats.todayRevenue), sub: "from today's orders", icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
-    { label: "This Week", value: formatPrice(stats.weekRevenue), sub: `${stats.weekOrders} orders`, icon: TrendingUp, color: "text-[#E8192C]", bg: "bg-red-50" },
+    { label: "Today's Revenue", value: formatPrice(stats.todayRevenue), sub: "food sales today", icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
+    { label: "Delivery Revenue", value: formatPrice(stats.todayDeliveryRevenue), sub: "from today's orders", icon: Truck, color: "text-teal-600", bg: "bg-teal-50" },
+    { label: "This Week", value: formatPrice(stats.weekRevenue), sub: `food sales (${stats.weekOrders} orders)`, icon: TrendingUp, color: "text-[#E8192C]", bg: "bg-red-50" },
     { label: "Active Orders", value: stats.pendingOrders, sub: "need attention", icon: Clock, color: "text-orange-600", bg: "bg-orange-50" },
     { label: "Total Customers", value: stats.totalCustomers, sub: "registered users", icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
   ];
@@ -119,7 +125,7 @@ export default function AdminOverview() {
       ) : (
       <div className="space-y-6">
       {/* Stats cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className={`w-10 h-10 ${c.bg} rounded-xl flex items-center justify-center mb-3`}>
@@ -135,7 +141,7 @@ export default function AdminOverview() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <h3 className="font-chewy text-lg text-gray-800 mb-4">Revenue — Last 7 Days</h3>
+          <h3 className="font-chewy text-lg text-gray-800 mb-4">Food Revenue — Last 7 Days</h3>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

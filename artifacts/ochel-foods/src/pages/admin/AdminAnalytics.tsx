@@ -8,7 +8,7 @@ import { formatPrice } from "@/data/menuData";
 import { toast } from "sonner";
 import {
   TrendingUp, Users, ShoppingBag, MousePointerClick, Download,
-  Award, Star, Trophy,
+  Award, Star, Trophy, Truck,
 } from "lucide-react";
 import PinGuard from "@/components/ui/PinGuard";
 
@@ -120,21 +120,27 @@ export default function AdminAnalytics() {
   const confirmedOrders = useMemo(() => orders.filter((o) => !["cancelled", "unpaid"].includes(o.status)), [orders]);
   const confirmedAllOrders = useMemo(() => allOrders.filter((o) => !["cancelled", "unpaid"].includes(o.status)), [allOrders]);
 
-  /* ── Existing computed values (unchanged) ── */
+  /* ── Existing computed values (updated for Food & Delivery revenue) ── */
   const revenueData = (() => {
     const days = period === "7d" ? 7 : period === "30d" ? 30 : 90;
-    const map = new Map<string, { revenue: number; orders: number }>();
+    const map = new Map<string, { revenue: number; deliveryRevenue: number; orders: number }>();
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
       const key = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-      map.set(key, { revenue: 0, orders: 0 });
+      map.set(key, { revenue: 0, deliveryRevenue: 0, orders: 0 });
     }
-    // Revenue from confirmed orders only
+    // Revenue from confirmed orders only (Food Revenue = total - delivery_fee, Delivery Revenue = delivery_fee)
     confirmedOrders.forEach((o) => {
       const key = new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
       if (map.has(key)) {
         const cur = map.get(key)!;
-        map.set(key, { revenue: cur.revenue + Number(o.total), orders: cur.orders });
+        const delFee = Number(o.delivery_fee || 0);
+        const foodRev = Number(o.total) - delFee;
+        map.set(key, {
+          revenue: cur.revenue + foodRev,
+          deliveryRevenue: cur.deliveryRevenue + delFee,
+          orders: cur.orders,
+        });
       }
     });
     // Order count from all orders (operational — shows total activity per day)
@@ -142,7 +148,7 @@ export default function AdminAnalytics() {
       const key = new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
       if (map.has(key)) {
         const cur = map.get(key)!;
-        map.set(key, { revenue: cur.revenue, orders: cur.orders + 1 });
+        map.set(key, { ...cur, orders: cur.orders + 1 });
       }
     });
     return Array.from(map.entries()).map(([date, v]) => ({ date, ...v }));
@@ -166,16 +172,17 @@ export default function AdminAnalytics() {
     out_for_delivery: "Out for Delivery", delivered: "Delivered", cancelled: "Cancelled",
   };
 
-  // Revenue & AOV use confirmed orders only (actual sales)
-  const totalRevenue = confirmedOrders.reduce((s, o) => s + Number(o.total), 0);
-  const deliveredRevenue = orders.filter((o) => o.status === "delivered").reduce((s, o) => s + Number(o.total), 0);
-  const avgOrderValue = confirmedOrders.length > 0 ? totalRevenue / confirmedOrders.length : 0;
+  // Food Revenue & Delivery Revenue calculations (confirmed orders only)
+  const totalFoodRevenue = confirmedOrders.reduce((s, o) => s + (Number(o.total) - Number(o.delivery_fee || 0)), 0);
+  const totalDeliveryRevenue = confirmedOrders.reduce((s, o) => s + Number(o.delivery_fee || 0), 0);
+  const deliveredFoodRevenue = orders.filter((o) => o.status === "delivered").reduce((s, o) => s + (Number(o.total) - Number(o.delivery_fee || 0)), 0);
+  const avgOrderValue = confirmedOrders.length > 0 ? totalFoodRevenue / confirmedOrders.length : 0;
   // Conversion rate uses all orders placed (any status) vs site visits
   const conversionRate = totalVisits > 0 ? ((orders.length / totalVisits) * 100).toFixed(1) : "0.0";
 
   const handleExport = () => {
-    const csv = ["Date,Revenue (₦),Orders,Visits"]
-      .concat(combinedData.map((r) => `"${r.date}",${r.revenue},${r.orders},${r.visits}`))
+    const csv = ["Date,Food Revenue (₦),Delivery Revenue (₦),Orders,Visits"]
+      .concat(combinedData.map((r) => `"${r.date}",${r.revenue},${r.deliveryRevenue},${r.orders},${r.visits}`))
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -202,13 +209,14 @@ export default function AdminAnalytics() {
   const bottomProducts = useMemo(() => [...productStats].filter((p) => p.qty > 0).sort((a, b) => a.qty - b.qty).slice(0, 10), [productStats]);
   const revenueByProduct = useMemo(() => [...productStats].sort((a, b) => b.revenue - a.revenue).slice(0, 10), [productStats]);
 
-  /* Top customers — all time, ranked by confirmed order spend */
+  /* Top customers — all time, ranked by confirmed order food spend */
   const topCustomers = useMemo(() => {
     const map = new Map<string, { name: string; orders: number; spent: number }>();
     for (const o of confirmedAllOrders) {
       const key = o.customer_phone;
       const cur = map.get(key) ?? { name: o.customer_name, orders: 0, spent: 0 };
-      map.set(key, { name: o.customer_name, orders: cur.orders + 1, spent: cur.spent + Number(o.total) });
+      const foodSpent = Number(o.total) - Number(o.delivery_fee || 0);
+      map.set(key, { name: o.customer_name, orders: cur.orders + 1, spent: cur.spent + foodSpent });
     }
     return Array.from(map.values()).sort((a, b) => b.spent - a.spent).slice(0, 10);
   }, [confirmedAllOrders]);
@@ -270,14 +278,15 @@ export default function AdminAnalytics() {
 
       {/* Existing summary cards */}
       {!loading && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           {[
-            { label: "Total Orders",          value: orders.length.toString(),      color: "text-blue-600",   bg: "bg-blue-50",   icon: ShoppingBag },
-            { label: "Confirmed Revenue",     value: formatPrice(totalRevenue),     color: "text-[#E8192C]",  bg: "bg-red-50",    icon: TrendingUp },
-            { label: "Delivered Revenue",     value: formatPrice(deliveredRevenue), color: "text-green-600",  bg: "bg-green-50",  icon: TrendingUp },
-            { label: "Avg Order Value",       value: formatPrice(avgOrderValue),    color: "text-purple-600", bg: "bg-purple-50", icon: TrendingUp },
-            { label: "Site Visits",        value: totalVisits.toLocaleString(), color: "text-orange-500", bg: "bg-orange-50", icon: Users },
-            { label: "Conversion Rate",    value: `${conversionRate}%`,      color: "text-teal-600",   bg: "bg-teal-50",   icon: MousePointerClick },
+            { label: "Total Orders",          value: orders.length.toString(),              color: "text-blue-600",    bg: "bg-blue-50",    icon: ShoppingBag },
+            { label: "Food Revenue",           value: formatPrice(totalFoodRevenue),        color: "text-[#E8192C]",   bg: "bg-red-50",     icon: TrendingUp },
+            { label: "Delivery Revenue",       value: formatPrice(totalDeliveryRevenue),    color: "text-emerald-600", bg: "bg-emerald-50", icon: Truck },
+            { label: "Delivered Food Rev.",   value: formatPrice(deliveredFoodRevenue),    color: "text-green-600",   bg: "bg-green-50",   icon: TrendingUp },
+            { label: "Avg Order Value",       value: formatPrice(avgOrderValue),           color: "text-purple-600",  bg: "bg-purple-50",  icon: TrendingUp },
+            { label: "Site Visits",            value: totalVisits.toLocaleString(),         color: "text-orange-500",  bg: "bg-orange-50",  icon: Users },
+            { label: "Conversion Rate",        value: `${conversionRate}%`,                 color: "text-teal-600",    bg: "bg-teal-50",    icon: MousePointerClick },
           ].map((c) => (
             <div key={c.label} className="bg-white rounded-2xl border border-gray-100 p-4">
               <div className={`w-9 h-9 ${c.bg} rounded-xl flex items-center justify-center mb-2`}>
@@ -341,13 +350,15 @@ export default function AdminAnalytics() {
           {/* Revenue chart */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h3 className="font-chewy text-lg text-gray-800 mb-4">Revenue Over Time</h3>
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={240}>
               <LineChart data={revenueData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="date" tick={{ fontSize: 10, fontFamily: "Montserrat" }} interval={xInterval} />
                 <YAxis tick={{ fontSize: 10, fontFamily: "Montserrat" }} tickFormatter={(v) => `₦${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => formatPrice(v)} labelStyle={{ fontFamily: "Montserrat" }} />
-                <Line type="monotone" dataKey="revenue" stroke="#E8192C" strokeWidth={2.5} dot={false} />
+                <Tooltip formatter={(v: number, name: string) => [formatPrice(v), name]} labelStyle={{ fontFamily: "Montserrat" }} />
+                <Line type="monotone" dataKey="revenue" name="Food Revenue" stroke="#E8192C" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="deliveryRevenue" name="Delivery Revenue" stroke="#10B981" strokeWidth={2.5} dot={false} />
+                <Legend wrapperStyle={{ fontFamily: "Montserrat", fontSize: 12 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
