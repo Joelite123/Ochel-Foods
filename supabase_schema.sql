@@ -228,6 +228,15 @@ create policy "Users can view own referrals" on public.referrals for select usin
 );
 create policy "Anyone can insert referral" on public.referrals for insert with check (true);
 
+-- Anti-abuse partial unique indexes (ensures one reward per customer across all codes)
+create unique index if not exists idx_referrals_unique_rewarded_user 
+  on public.referrals (referred_id) 
+  where (referred_id is not null and status = 'rewarded');
+
+create unique index if not exists idx_referrals_unique_rewarded_phone 
+  on public.referrals (referred_phone) 
+  where (referred_phone is not null and status = 'rewarded');
+
 -- Abuse log
 create table if not exists public.referral_abuse_log (
   id          uuid primary key default gen_random_uuid(),

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Mail, Download, Trash2, Send, Users } from "lucide-react";
-import { apiUrl } from "@/lib/api";
 import { supabase, DBNewsletterSubscriber } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -39,19 +38,28 @@ export default function AdminNewsletter() {
     if (active.length === 0) return toast.error("No active subscribers");
     setSending(true);
 
-    // Send via API
-    const res = await fetch(apiUrl("/api/newsletter/send"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subject, body, recipients: active.map((s) => ({ email: s.email, name: s.name })) }),
-    });
-    setSending(false);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-newsletter", {
+        body: { subject, body },
+      });
 
-    if (res.ok) {
-      toast.success(`Email sent to ${active.length} subscriber${active.length !== 1 ? "s" : ""}!`);
-      setSubject(""); setBody("");
-    } else {
-      toast.error("Failed to send. Check server logs.");
+      if (error) {
+        throw new Error(error.message || "Failed to invoke edge function");
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      const sentCount = data?.sent ?? active.length;
+      toast.success(`Email sent to ${sentCount} subscriber${sentCount !== 1 ? "s" : ""}!`);
+      setSubject("");
+      setBody("");
+    } catch (err: any) {
+      console.error("[AdminNewsletter] send error:", err);
+      toast.error(err.message || "Failed to send newsletter. Check Edge Function configuration.");
+    } finally {
+      setSending(false);
     }
   };
 

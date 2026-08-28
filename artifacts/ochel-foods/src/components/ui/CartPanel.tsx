@@ -33,6 +33,15 @@ function toDateStr(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
+export function normalizePhone(phone?: string | null): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("234") && digits.length === 13) {
+    return "0" + digits.slice(3);
+  }
+  return digits;
+}
+
 interface TimeSlot { label: string; value: string }
 
 function generateSlotsForDate(
@@ -380,19 +389,26 @@ export default function CartPanel() {
     setReferralValid(null);
     const { data: refCode } = await supabase
       .from("referral_codes")
-      .select("*, profiles(full_name)")
+      .select("*, profiles(id, email, phone, full_name)")
       .eq("code", code)
       .single();
     if (!refCode) {
       setReferralValid(false);
       setReferralMsg("Invalid referral code");
-    } else if (user?.id && user.id === refCode.user_id) {
-      setReferralValid(false);
-      setReferralMsg("You cannot use your own referral code");
     } else {
-      const referrerName = (refCode as any).profiles?.full_name ?? "a friend";
-      setReferralValid(true);
-      setReferralMsg(`Valid! Referred by ${referrerName}`);
+      const referrerProfile = (refCode as any).profiles;
+      const isSelfUserId = Boolean(user?.id && user.id === refCode.user_id);
+      const isSelfPhone = Boolean(form.phone.trim() && referrerProfile?.phone && normalizePhone(form.phone) === normalizePhone(referrerProfile.phone));
+      const isSelfEmail = Boolean(form.email.trim() && referrerProfile?.email && form.email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase());
+
+      if (isSelfUserId || isSelfPhone || isSelfEmail) {
+        setReferralValid(false);
+        setReferralMsg("You cannot use your own referral code");
+      } else {
+        const referrerName = referrerProfile?.full_name ?? "a friend";
+        setReferralValid(true);
+        setReferralMsg(`Valid! Referred by ${referrerName}`);
+      }
     }
     setValidatingCode(false);
   };

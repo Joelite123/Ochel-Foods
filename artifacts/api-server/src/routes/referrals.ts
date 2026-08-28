@@ -23,42 +23,93 @@ router.post("/reward", async (req: Request, res: Response) => {
   if (order.status !== "delivered") return res.status(400).json({ error: "Order is not delivered" });
   if (!order.referral_code_used) return res.status(200).json({ message: "No referral code used" });
 
-  // 2. Find the referral code owner
+function normalizePhone(phone?: string | null): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("234") && digits.length === 13) {
+    return "0" + digits.slice(3);
+  }
+  return digits;
+}
+
+// 2. Find the referral code owner and profile
   const { data: refCode, error: rcErr } = await supabaseAdmin
     .from("referral_codes")
-    .select("*")
+    .select("*, profiles(id, email, phone, full_name)")
     .eq("code", order.referral_code_used)
     .single();
 
   if (rcErr || !refCode) return res.status(404).json({ error: "Referral code not found" });
+  const referrerProfile = (refCode as any).profiles;
 
-  // 3. Anti-abuse: self-referral check
-  if (order.user_id && order.user_id === refCode.user_id) {
+  // 3. Anti-abuse: self-referral check (User ID, Phone, Email)
+  const isSelfUserId = Boolean(order.user_id && order.user_id === refCode.user_id);
+  const isSelfPhone = Boolean(
+    order.customer_phone &&
+    referrerProfile?.phone &&
+    normalizePhone(order.customer_phone) === normalizePhone(referrerProfile.phone)
+  );
+  const isSelfEmail = Boolean(
+    order.customer_email &&
+    referrerProfile?.email &&
+    order.customer_email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase()
+  );
+
+  if (isSelfUserId || isSelfPhone || isSelfEmail) {
     await supabaseAdmin.from("referral_abuse_log").insert({
       user_id: order.user_id,
       code: order.referral_code_used,
       phone: order.customer_phone,
-      reason: "Self-referral attempt",
+      reason: "Self-referral attempt (matched user, phone, or email)",
     });
     return res.status(400).json({ error: "Self-referral not allowed" });
   }
 
-  // 4. Anti-abuse: check if this referred user already triggered a reward
-  const { data: existing } = await supabaseAdmin
-    .from("referrals")
-    .select("id")
-    .eq("code", order.referral_code_used)
-    .eq("status", "rewarded")
-    .or(`referred_id.eq.${order.user_id ?? "null"},referred_phone.eq.${order.customer_phone}`);
+  // 4. Anti-abuse: check if this referred user already triggered a reward across ANY code
+  const refFilters: string[] = [];
+  if (order.user_id) refFilters.push(`referred_id.eq.${order.user_id}`);
+  if (order.customer_phone) refFilters.push(`referred_phone.eq.${order.customer_phone}`);
 
-  if (existing && existing.length > 0) {
-    await supabaseAdmin.from("referral_abuse_log").insert({
-      user_id: order.user_id,
-      code: order.referral_code_used,
-      phone: order.customer_phone,
-      reason: "Duplicate referral reward attempt",
-    });
-    return res.status(400).json({ error: "Referral already rewarded for this user/phone" });
+  if (refFilters.length > 0) {
+    const { data: existing } = await supabaseAdmin
+      .from("referrals")
+      .select("id")
+      .eq("status", "rewarded")
+      .or(refFilters.join(","));
+
+    if (existing && existing.length > 0) {
+      await supabaseAdmin.from("referral_abuse_log").insert({
+        user_id: order.user_id,
+        code: order.referral_code_used,
+        phone: order.customer_phone,
+        reason: "Duplicate referral reward attempt (customer already rewarded)",
+      });
+      return res.status(400).json({ error: "Referral already rewarded for this user/phone" });
+    }
+  }
+
+  // 5. Anti-abuse: First-time customers only (Check if customer has any prior delivered order)
+  const orderFilters: string[] = [];
+  if (order.user_id) orderFilters.push(`user_id.eq.${order.user_id}`);
+  if (order.customer_phone) orderFilters.push(`customer_phone.eq.${order.customer_phone}`);
+
+  if (orderFilters.length > 0) {
+    const { data: priorOrders } = await supabaseAdmin
+      .from("orders")
+      .select("id")
+      .eq("status", "delivered")
+      .neq("id", orderId)
+      .or(orderFilters.join(","));
+
+    if (priorOrders && priorOrders.length > 0) {
+      await supabaseAdmin.from("referral_abuse_log").insert({
+        user_id: order.user_id,
+        code: order.referral_code_used,
+        phone: order.customer_phone,
+        reason: "Not a first-time customer (has prior delivered order)",
+      });
+      return res.status(400).json({ error: "Referrals only valid for first-time customers" });
+    }
   }
 
   // 5. Get reward settings
@@ -172,25 +223,38 @@ router.post("/generate-code", async (req: Request, res: Response) => {
  * Check if a referral code is valid before applying it at checkout.
  */
 router.post("/validate", async (req: Request, res: Response) => {
-  const { code, userId, phone } = req.body as { code?: string; userId?: string; phone?: string };
+  const { code, userId, phone, email } = req.body as { code?: string; userId?: string; phone?: string; email?: string };
   if (!code) return res.status(400).json({ error: "Code required" });
 
   const { data: refCode } = await supabaseAdmin
     .from("referral_codes")
-    .select("*, profiles(full_name)")
+    .select("*, profiles(id, email, phone, full_name)")
     .eq("code", code.toUpperCase())
     .single();
 
   if (!refCode) return res.status(404).json({ valid: false, error: "Invalid referral code" });
+  const referrerProfile = (refCode as any).profiles;
 
-  // Self-referral check
-  if (userId && userId === refCode.user_id) {
+  // Self-referral checks (User ID, Phone, Email)
+  const isSelfUserId = Boolean(userId && userId === refCode.user_id);
+  const isSelfPhone = Boolean(
+    phone &&
+    referrerProfile?.phone &&
+    normalizePhone(phone) === normalizePhone(referrerProfile.phone)
+  );
+  const isSelfEmail = Boolean(
+    email &&
+    referrerProfile?.email &&
+    email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase()
+  );
+
+  if (isSelfUserId || isSelfPhone || isSelfEmail) {
     return res.json({ valid: false, error: "You cannot use your own referral code" });
   }
 
   return res.json({
     valid: true,
-    referrerName: (refCode as any).profiles?.full_name ?? "a friend",
+    referrerName: referrerProfile?.full_name ?? "a friend",
   });
 });
 

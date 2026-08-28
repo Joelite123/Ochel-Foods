@@ -33,36 +33,107 @@ type OrderWithItems = DBOrder & {
   }>;
 };
 
+function normalizePhone(phone?: string | null): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("234") && digits.length === 13) {
+    return "0" + digits.slice(3);
+  }
+  return digits;
+}
+
 async function processReferralReward(orderId: string, order: OrderWithItems) {
   if (!order.referral_code_used) return;
 
   const { data: refCode } = await supabase
     .from("referral_codes")
-    .select("*, profiles(full_name)")
+    .select("*, profiles(id, email, phone, full_name)")
     .eq("code", order.referral_code_used)
     .single();
 
   if (!refCode) return;
-  if (order.user_id && order.user_id === refCode.user_id) return;
+  const referrerProfile = (refCode as any).profiles;
 
-  const { data: existing } = await supabase
-    .from("referrals")
-    .select("id")
-    .eq("code", order.referral_code_used)
-    .eq("status", "rewarded")
-    .or(`referred_id.eq.${order.user_id ?? "null"},referred_phone.eq.${order.customer_phone}`);
+  // 1. Anti-abuse: Self-referral check (User ID, Phone, Email)
+  const isSelfUserId = Boolean(order.user_id && order.user_id === refCode.user_id);
+  const isSelfPhone = Boolean(
+    order.customer_phone &&
+    referrerProfile?.phone &&
+    normalizePhone(order.customer_phone) === normalizePhone(referrerProfile.phone)
+  );
+  const isSelfEmail = Boolean(
+    order.customer_email &&
+    referrerProfile?.email &&
+    order.customer_email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase()
+  );
 
-  if (existing && existing.length > 0) return;
+  if (isSelfUserId || isSelfPhone || isSelfEmail) {
+    await supabase.from("referral_abuse_log").insert({
+      user_id: order.user_id ?? null,
+      code: order.referral_code_used,
+      phone: order.customer_phone,
+      reason: "Self-referral attempt (matched user, phone, or email)",
+    });
+    return;
+  }
 
+  // 2. Anti-abuse: Stop cross-code exploit (Check if this customer was EVER rewarded under ANY code)
+  const refFilters: string[] = [];
+  if (order.user_id) refFilters.push(`referred_id.eq.${order.user_id}`);
+  if (order.customer_phone) refFilters.push(`referred_phone.eq.${order.customer_phone}`);
+
+  if (refFilters.length > 0) {
+    const { data: existing } = await supabase
+      .from("referrals")
+      .select("id")
+      .eq("status", "rewarded")
+      .or(refFilters.join(","));
+
+    if (existing && existing.length > 0) {
+      await supabase.from("referral_abuse_log").insert({
+        user_id: order.user_id ?? null,
+        code: order.referral_code_used,
+        phone: order.customer_phone,
+        reason: "Duplicate referral reward attempt (customer already rewarded)",
+      });
+      return;
+    }
+  }
+
+  // 3. Anti-abuse: First-time customers only (Check if customer has any prior delivered order)
+  const orderFilters: string[] = [];
+  if (order.user_id) orderFilters.push(`user_id.eq.${order.user_id}`);
+  if (order.customer_phone) orderFilters.push(`customer_phone.eq.${order.customer_phone}`);
+
+  if (orderFilters.length > 0) {
+    const { data: priorOrders } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("status", "delivered")
+      .neq("id", orderId)
+      .or(orderFilters.join(","));
+
+    if (priorOrders && priorOrders.length > 0) {
+      await supabase.from("referral_abuse_log").insert({
+        user_id: order.user_id ?? null,
+        code: order.referral_code_used,
+        phone: order.customer_phone,
+        reason: "Not a first-time customer (has prior delivered order)",
+      });
+      return;
+    }
+  }
+
+  // 4. Fetch reward settings
   const settings = await getRewardSettings();
-
   const rewardAmount = settings?.reward_value ?? 2000;
   const expiryDays = settings?.expiry_days ?? 60;
   const expiresAt = expiryDays > 0
     ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  await supabase.from("referrals").insert({
+  // 5. Create referral record (protected by DB unique constraints)
+  const { error: refErr } = await supabase.from("referrals").insert({
     referrer_id: refCode.user_id,
     referred_id: order.user_id ?? null,
     referred_phone: order.customer_phone,
@@ -74,6 +145,12 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     rewarded_at: new Date().toISOString(),
   });
 
+  if (refErr) {
+    console.warn("[processReferralReward] Insert referral error:", refErr.message);
+    return;
+  }
+
+  // 6. Issue reward to referrer's wallet
   await supabase.from("user_rewards").insert({
     user_id: refCode.user_id,
     reward_type: "cash_credit",
@@ -85,6 +162,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     is_used: false,
   });
 
+  // 7. Update referrer's wallet balance in profile
   const { data: p } = await supabase
     .from("profiles")
     .select("referral_wallet_balance")
@@ -96,6 +174,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     }).eq("id", refCode.user_id);
   }
 
+  // 8. Update referral code stats
   await supabase.from("referral_codes").update({
     total_referrals: refCode.total_referrals + 1,
     total_earned: Number(refCode.total_earned) + rewardAmount,
