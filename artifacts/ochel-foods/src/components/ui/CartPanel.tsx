@@ -29,8 +29,11 @@ function fmt12(h: number, m: number) {
   return `${dh}:${dm} ${period}`;
 }
 
-function toDateStr(d: Date) {
-  return d.toISOString().split("T")[0];
+function toDateStr(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function normalizePhone(phone?: string | null): string {
@@ -300,10 +303,17 @@ export default function CartPanel() {
     [deliveryDate, openHours, closeHoursMap, closeHour, selectedDateClosed]
   );
 
-  // Reset time slot when date changes
+  // Sync time slot whenever slots change or date changes
   useEffect(() => {
-    setForm((f) => ({ ...f, deliveryTime: slots[0]?.value ?? "" }));
-  }, [deliveryDate]);
+    if (slots.length > 0) {
+      setForm((f) => {
+        const exists = slots.some((s) => s.value === f.deliveryTime);
+        return exists ? f : { ...f, deliveryTime: slots[0].value };
+      });
+    } else {
+      setForm((f) => ({ ...f, deliveryTime: "" }));
+    }
+  }, [slots]);
 
   const hoursStatus = useMemo(() => getHoursStatus(openHours, closeHour), [openHours, closeHour]);
 
@@ -690,6 +700,7 @@ export default function CartPanel() {
     form.phone.trim() &&
     (isPickup || (form.address.trim() && form.deliveryZoneId)) &&
     !selectedDateClosed &&
+    slots.length > 0 &&
     !savingOrder;
 
   const fieldClass = "w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-4 py-3 text-sm font-[Montserrat] focus:outline-none bg-white";
@@ -955,9 +966,26 @@ export default function CartPanel() {
                       {isPickup ? "Preferred Pick Up Time" : "Preferred Delivery Time"}
                     </label>
                     {slots.length === 0 ? (
-                      <p className="text-sm text-orange-600 font-[Montserrat] bg-orange-50 rounded-xl px-4 py-3">
-                        No time slots available for this date. Check back during operating hours.
-                      </p>
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 space-y-2">
+                        <p className="text-xs text-orange-800 font-[Montserrat] leading-relaxed">
+                          {deliveryDate === todayStr
+                            ? "Ordering for today is closed for the night (kitchen prep cutoff). Please select tomorrow or another upcoming date to pre-order!"
+                            : "No time slots available for this date. Please choose another date."}
+                        </p>
+                        {deliveryDate === todayStr && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tomorrow = new Date();
+                              tomorrow.setDate(tomorrow.getDate() + 1);
+                              setDeliveryDate(toDateStr(tomorrow));
+                            }}
+                            className="text-xs bg-[#E8192C] text-white font-bold font-[Montserrat] px-3 py-1.5 rounded-lg hover:bg-[#c8151f] transition-colors"
+                          >
+                            Switch to Tomorrow →
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <div className="relative">
                         <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
