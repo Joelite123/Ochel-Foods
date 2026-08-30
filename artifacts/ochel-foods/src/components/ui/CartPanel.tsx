@@ -65,7 +65,7 @@ function generateSlotsForDate(
     for (const m of [0, 30]) {
       const slotTime = new Date(date);
       slotTime.setHours(h, m, 0, 0);
-      if (isToday && slotTime < new Date(now.getTime() + 60 * 60 * 1000)) continue;
+      if (isToday && slotTime < new Date(now.getTime() + 30 * 60 * 1000)) continue;
       slots.push({ label: fmt12(h, m), value: slotTime.toISOString() });
       if (slots.length >= 20) break;
     }
@@ -296,6 +296,21 @@ export default function CartPanel() {
 
   const selectedDateClosed = isDateClosed(deliveryDate);
   const maxDateStr = toDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+
+  // Determine if today has any open slots left
+  const todaySlots = useMemo(
+    () => isDateClosed(todayStr) ? [] : generateSlotsForDate(todayStr, openHours, closeHoursMap, closeHour),
+    [todayStr, openHours, closeHoursMap, closeHour, publicHolidayDates, closedDays]
+  );
+
+  // Automatically default straight to tomorrow once today has no slots left
+  useEffect(() => {
+    if (deliveryDate === todayStr && todaySlots.length === 0) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setDeliveryDate(toDateStr(tomorrow));
+    }
+  }, [todaySlots, deliveryDate, todayStr]);
 
   // Slots for selected date
   const slots = useMemo(
@@ -945,7 +960,7 @@ export default function CartPanel() {
                   </label>
                   <input
                     type="date"
-                    min={todayStr}
+                    min={todaySlots.length === 0 ? toDateStr(new Date(Date.now() + 24 * 60 * 60 * 1000)) : todayStr}
                     max={maxDateStr}
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
@@ -966,26 +981,9 @@ export default function CartPanel() {
                       {isPickup ? "Preferred Pick Up Time" : "Preferred Delivery Time"}
                     </label>
                     {slots.length === 0 ? (
-                      <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 space-y-2">
-                        <p className="text-xs text-orange-800 font-[Montserrat] leading-relaxed">
-                          {deliveryDate === todayStr
-                            ? "Ordering for today is closed for the night (kitchen prep cutoff). Please select tomorrow or another upcoming date to pre-order!"
-                            : "No time slots available for this date. Please choose another date."}
-                        </p>
-                        {deliveryDate === todayStr && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tomorrow = new Date();
-                              tomorrow.setDate(tomorrow.getDate() + 1);
-                              setDeliveryDate(toDateStr(tomorrow));
-                            }}
-                            className="text-xs bg-[#E8192C] text-white font-bold font-[Montserrat] px-3 py-1.5 rounded-lg hover:bg-[#c8151f] transition-colors"
-                          >
-                            Switch to Tomorrow →
-                          </button>
-                        )}
-                      </div>
+                      <p className="text-xs text-gray-500 font-[Montserrat] bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                        No time slots available for this date. Please select another date.
+                      </p>
                     ) : (
                       <div className="relative">
                         <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
