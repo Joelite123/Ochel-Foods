@@ -15,7 +15,7 @@ type Tab = "overview" | "orders" | "rewards" | "referral";
 
 export default function AccountPage() {
   const { user, profile, signOut, refreshProfile } = useAuth();
-  const { referralCode: contextReferralCode, walletBalance, activeRewards, generateReferralCode, isLoading } = useRewards();
+  const { referralCode: contextReferralCode, walletBalance, pendingBalance, pendingReferrals, activeRewards, generateReferralCode, isLoading } = useRewards();
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("overview");
   type OrderWithItems = DBOrder & { order_items?: import("@/lib/supabase").DBOrderItem[] };
@@ -180,11 +180,21 @@ export default function AccountPage() {
               <Wallet className="w-7 h-7 text-[#E8192C] mx-auto mb-1" />
               <p className="font-chewy text-2xl text-gray-900">{formatPrice(walletBalance)}</p>
               <p className="text-gray-400 text-xs font-[Montserrat]">Referral Wallet</p>
+              {pendingBalance > 0 && (
+                <span className="inline-block mt-1 text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-[Montserrat]">
+                  +{formatPrice(pendingBalance)} pending
+                </span>
+              )}
             </div>
             <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
               <Gift className="w-7 h-7 text-[#FFB800] mx-auto mb-1" />
               <p className="font-chewy text-2xl text-gray-900">{referralCode?.total_referrals ?? 0}</p>
               <p className="text-gray-400 text-xs font-[Montserrat]">Friends Referred</p>
+              {pendingReferrals.length > 0 && (
+                <span className="inline-block mt-1 text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-[Montserrat]">
+                  {pendingReferrals.length} pending order{pendingReferrals.length > 1 ? "s" : ""}
+                </span>
+              )}
             </div>
           </div>
         </motion.div>
@@ -253,39 +263,74 @@ export default function AccountPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h2 className="font-chewy text-xl text-gray-800 mb-3">Your Wallet</h2>
-            <div className="bg-gradient-to-r from-[#E8192C]/10 to-[#FF6B35]/10 rounded-xl p-4 mb-4">
+            <div className="bg-gradient-to-r from-[#E8192C]/10 to-[#FF6B35]/10 rounded-xl p-4 mb-3">
               <p className="text-gray-500 text-xs font-[Montserrat] uppercase tracking-wide mb-1">Available Balance</p>
               <p className="font-chewy text-3xl text-[#E8192C]">{formatPrice(walletBalance)}</p>
               <p className="text-gray-400 text-xs font-[Montserrat] mt-1">
                 Use at checkout — applied automatically when available
               </p>
             </div>
+
+            {pendingBalance > 0 && (
+              <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-4 flex items-start gap-3">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-lg mt-0.5 flex-shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-chewy text-lg text-amber-900">Pending Balance: {formatPrice(pendingBalance)}</p>
+                  <p className="text-xs text-amber-700 font-[Montserrat] mt-0.5 leading-relaxed">
+                    Locked — becomes spendable cash credit in your wallet once your referred friends' first order is confirmed.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
             <h3 className="font-chewy text-lg text-gray-700">Reward History</h3>
             {isLoading ? (
               <p className="text-gray-400 text-sm font-[Montserrat]">Loading…</p>
-            ) : activeRewards.length === 0 ? (
+            ) : activeRewards.length === 0 && pendingReferrals.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
                 <Gift className="w-10 h-10 text-gray-200 mx-auto mb-2" />
                 <p className="text-gray-400 text-sm font-[Montserrat]">No active rewards yet</p>
               </div>
             ) : (
-              activeRewards.map((r) => (
-                <div key={r.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-sm font-[Montserrat] text-gray-800">{r.description}</p>
-                    {r.expires_at && (
-                      <p className="text-xs text-gray-400 font-[Montserrat] flex items-center gap-1 mt-0.5">
+              <>
+                {pendingReferrals.map((pr) => (
+                  <div key={pr.id} className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-4 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full font-[Montserrat]">
+                          Pending Confirmation
+                        </span>
+                        <p className="font-semibold text-sm font-[Montserrat] text-gray-800">
+                          Referral Reward (Code: {pr.code})
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-400 font-[Montserrat] flex items-center gap-1 mt-1">
                         <Clock className="w-3 h-3" />
-                        Expires {new Date(r.expires_at).toLocaleDateString("en-GB")}
+                        Friend signed up {new Date(pr.created_at).toLocaleDateString("en-GB")}
                       </p>
-                    )}
+                    </div>
+                    <p className="font-chewy text-lg text-amber-600">+{formatPrice(pr.reward_amount)}</p>
                   </div>
-                  <p className="font-chewy text-lg text-[#E8192C]">{formatPrice(r.balance)}</p>
-                </div>
-              ))
+                ))}
+                {activeRewards.map((r) => (
+                  <div key={r.id} className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm font-[Montserrat] text-gray-800">{r.description}</p>
+                      {r.expires_at && (
+                        <p className="text-xs text-gray-400 font-[Montserrat] flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3" />
+                          Expires {new Date(r.expires_at).toLocaleDateString("en-GB")}
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-chewy text-lg text-[#E8192C]">{formatPrice(r.balance)}</p>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         </motion.div>
@@ -297,7 +342,7 @@ export default function AccountPage() {
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
             <h2 className="font-chewy text-xl text-gray-800 mb-1">Share & Earn</h2>
             <p className="text-gray-500 text-sm font-[Montserrat] mb-4">
-              Refer a friend. When they complete their first paid order,{" "}
+              Refer a friend. When their first order is confirmed,{" "}
               you earn a cash reward added to your Referral Wallet.
             </p>
 
@@ -313,7 +358,7 @@ export default function AccountPage() {
                     <Copy className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className={`grid gap-3 mt-4 ${pendingReferrals.length > 0 ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
                   <div className="bg-gray-50 rounded-xl p-3 text-center">
                     <p className="font-chewy text-2xl text-gray-800">{referralCode.total_referrals}</p>
                     <p className="text-xs text-gray-400 font-[Montserrat]">Friends referred</p>
@@ -322,6 +367,14 @@ export default function AccountPage() {
                     <p className="font-chewy text-2xl text-[#E8192C]">{formatPrice(referralCode.total_earned)}</p>
                     <p className="text-xs text-gray-400 font-[Montserrat]">Total earned</p>
                   </div>
+                  {pendingReferrals.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 text-center">
+                      <p className="font-chewy text-2xl text-amber-700">{formatPrice(pendingBalance)}</p>
+                      <p className="text-xs text-amber-600 font-[Montserrat]">
+                        {pendingReferrals.length} pending reward{pendingReferrals.length > 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -343,8 +396,8 @@ export default function AccountPage() {
             <h3 className="font-chewy text-base text-amber-800 mb-2">How it works</h3>
             <ol className="space-y-2 text-sm font-[Montserrat] text-amber-700">
               <li className="flex gap-2"><span className="font-bold">1.</span> Share your code with friends</li>
-              <li className="flex gap-2"><span className="font-bold">2.</span> They enter it at signup or checkout</li>
-              <li className="flex gap-2"><span className="font-bold">3.</span> When their first order is delivered, you earn a cash reward</li>
+              <li className="flex gap-2"><span className="font-bold">2.</span> They enter it when they create an account</li>
+              <li className="flex gap-2"><span className="font-bold">3.</span> When their first order is confirmed, you earn a cash reward</li>
               <li className="flex gap-2"><span className="font-bold">4.</span> Use your wallet balance as a discount on future orders</li>
             </ol>
           </div>

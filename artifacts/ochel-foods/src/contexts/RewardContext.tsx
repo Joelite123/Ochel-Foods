@@ -1,13 +1,15 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase, DBUserReward, DBReferralCode, DBRewardSetting } from "@/lib/supabase";
+import { supabase, DBUserReward, DBReferralCode, DBRewardSetting, DBReferral } from "@/lib/supabase";
 import { getRewardSettings } from "@/lib/rewardSettingsCache";
 import { useAuth } from "@/contexts/AuthContext";
 
 type RewardContextType = {
   rewards: DBUserReward[];
+  pendingReferrals: DBReferral[];
   referralCode: DBReferralCode | null;
   rewardSettings: DBRewardSetting | null;
   walletBalance: number;
+  pendingBalance: number;
   activeRewards: DBUserReward[];
   isLoading: boolean;
   generateReferralCode: () => Promise<string | null>;
@@ -23,6 +25,7 @@ const RewardContext = createContext<RewardContextType | undefined>(undefined);
 export function RewardProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [rewards, setRewards] = useState<DBUserReward[]>([]);
+  const [pendingReferrals, setPendingReferrals] = useState<DBReferral[]>([]);
   const [referralCode, setReferralCode] = useState<DBReferralCode | null>(null);
   const [rewardSettings, setRewardSettings] = useState<DBRewardSetting | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +34,7 @@ export function RewardProvider({ children }: { children: ReactNode }) {
   const loadData = async () => {
     if (!user) {
       setRewards([]);
+      setPendingReferrals([]);
       setReferralCode(null);
       return;
     }
@@ -43,6 +47,15 @@ export function RewardProvider({ children }: { children: ReactNode }) {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
     if (rwData) setRewards(rwData as DBUserReward[]);
+
+    // Load pending referrals where user is the referrer
+    const { data: pendData } = await supabase
+      .from("referrals")
+      .select("*")
+      .eq("referrer_id", user.id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    if (pendData) setPendingReferrals(pendData as DBReferral[]);
 
     // Load referral code — auto-generate via Supabase if not yet created
     const { data: rcData } = await supabase
@@ -93,6 +106,11 @@ export function RewardProvider({ children }: { children: ReactNode }) {
     .filter((r) => r.reward_type === "cash_credit")
     .reduce((sum, r) => sum + r.balance, 0);
 
+  const pendingBalance = pendingReferrals.reduce(
+    (sum, r) => sum + (Number(r.reward_amount) || 0),
+    0
+  );
+
   const generateReferralCode = async (): Promise<string | null> => {
     if (!user) return null;
     for (let i = 0; i < 5; i++) {
@@ -118,9 +136,11 @@ export function RewardProvider({ children }: { children: ReactNode }) {
     <RewardContext.Provider
       value={{
         rewards,
+        pendingReferrals,
         referralCode,
         rewardSettings,
         walletBalance,
+        pendingBalance,
         activeRewards,
         isLoading,
         generateReferralCode,

@@ -8,7 +8,7 @@ type AuthContextType = {
   profile: Profile | null;
   isAdmin: boolean;
   isLoading: boolean;
-  signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<{ error: string | null; user?: User | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -68,12 +68,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string, phone?: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: fullName, phone } },
     });
-    if (error) return { error: error.message };
+    if (error) return { error: error.message, user: null };
 
     // Update phone in profile after a short delay (trigger creates profile)
     if (phone) {
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }, 1500);
     }
-    return { error: null };
+    return { error: null, user: data.user };
   };
 
   const signIn = async (email: string, password: string) => {

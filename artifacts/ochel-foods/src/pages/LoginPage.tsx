@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, User, Lock, Mail, Phone, ArrowLeft } from "lucide-react";
+import { Eye, EyeOff, User, Lock, Mail, Phone, ArrowLeft, Gift } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { getRewardSettings } from "@/lib/rewardSettingsCache";
 import whiteLogo from "@assets/O'Chel_Logo_White_transparent_1778493177551.png";
 
 type Tab = "login" | "signup" | "forgot";
@@ -37,9 +39,63 @@ export default function LoginPage() {
     // If profile is still null after 2 s (no profile row), just go to /account
   }, [awaitingRedirect, user, profile, nextPath]);
 
+  function normalizePhone(phone?: string | null): string {
+    if (!phone) return "";
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("234") && digits.length === 13) {
+      return "0" + digits.slice(3);
+    }
+    return digits;
+  }
+
+  async function savePendingReferral(userId: string, email: string, phone: string, rawCode: string) {
+    const code = rawCode.trim().toUpperCase();
+    if (!code) return;
+
+    const { data: refCode } = await supabase
+      .from("referral_codes")
+      .select("*, profiles(id, email, phone, full_name)")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (!refCode) return;
+
+    const referrerProfile = (refCode as any).profiles;
+
+    // Anti-abuse: Self-referral check (ID, phone, email)
+    const isSelfId = refCode.user_id === userId;
+    const isSelfPhone = Boolean(phone && referrerProfile?.phone && normalizePhone(phone) === normalizePhone(referrerProfile.phone));
+    const isSelfEmail = Boolean(email && referrerProfile?.email && email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase());
+
+    if (isSelfId || isSelfPhone || isSelfEmail) {
+      await supabase.from("referral_abuse_log").insert({
+        user_id: userId,
+        code,
+        phone: phone || null,
+        reason: "Self-referral attempt at signup",
+      });
+      return;
+    }
+
+    // Capture and lock in reward amount at signup
+    const settings = await getRewardSettings();
+    const rewardAmount = settings?.reward_value ?? 2000;
+
+    await supabase.from("referrals").insert({
+      referrer_id: refCode.user_id,
+      referred_id: userId,
+      referred_phone: phone ? normalizePhone(phone) : null,
+      code,
+      status: "pending",
+      reward_amount: rewardAmount,
+      reward_type: "cash_credit",
+      notes: "Pending friend's first confirmed order",
+    });
+  }
+
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({
-    fullName: "", email: "", phone: "", password: "", confirmPassword: "",
+    fullName: "", email: "", phone: "", password: "", confirmPassword: "", referralCode: "",
   });
 
   const field =
@@ -77,7 +133,7 @@ export default function LoginPage() {
       return setError("Password must be at least 6 characters");
     }
     setLoading(true);
-    const { error } = await signUp(
+    const { error, user } = await signUp(
       signupForm.email,
       signupForm.password,
       signupForm.fullName,
@@ -85,6 +141,19 @@ export default function LoginPage() {
     );
     setLoading(false);
     if (error) return setError(error);
+
+    // Save pending referral relationship immediately at signup
+    if (user?.id && signupForm.referralCode.trim()) {
+      savePendingReferral(
+        user.id,
+        signupForm.email,
+        signupForm.phone,
+        signupForm.referralCode.trim(),
+      ).catch((err) => {
+        console.warn("[handleSignup] Referral error:", err);
+      });
+    }
+
     setSuccess("Account created! Please check your email to confirm, then log in.");
     setTab("login");
   };
@@ -270,6 +339,13 @@ export default function LoginPage() {
                     value={signupForm.phone}
                     onChange={(e) => setSignupForm((f) => ({ ...f, phone: e.target.value }))}
                     className={`${field} pl-10`} />
+                </div>
+                <div className="relative">
+                  <Gift className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input type="text" placeholder="Referral code (optional)"
+                    value={signupForm.referralCode}
+                    onChange={(e) => setSignupForm((f) => ({ ...f, referralCode: e.target.value.toUpperCase() }))}
+                    className={`${field} pl-10 uppercase`} />
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

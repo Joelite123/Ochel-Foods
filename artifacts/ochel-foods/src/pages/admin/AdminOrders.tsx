@@ -43,12 +43,24 @@ function normalizePhone(phone?: string | null): string {
 }
 
 async function processReferralReward(orderId: string, order: OrderWithItems) {
-  if (!order.referral_code_used) return;
+  if (!order.user_id) return;
+
+  // Find signup-time pending referral for this user
+  const { data: pendingRef } = await supabase
+    .from("referrals")
+    .select("*")
+    .eq("referred_id", order.user_id)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!pendingRef) return;
 
   const { data: refCode } = await supabase
     .from("referral_codes")
     .select("*, profiles(id, email, phone, full_name)")
-    .eq("code", order.referral_code_used)
+    .eq("code", pendingRef.code)
     .single();
 
   if (!refCode) return;
@@ -70,10 +82,14 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
   if (isSelfUserId || isSelfPhone || isSelfEmail) {
     await supabase.from("referral_abuse_log").insert({
       user_id: order.user_id ?? null,
-      code: order.referral_code_used,
+      code: pendingRef.code,
       phone: order.customer_phone,
       reason: "Self-referral attempt (matched user, phone, or email)",
     });
+    await supabase.from("referrals").update({
+      status: "rejected",
+      notes: "Self-referral attempt (matched user, phone, or email)",
+    }).eq("id", pendingRef.id);
     return;
   }
 
@@ -92,15 +108,19 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     if (existing && existing.length > 0) {
       await supabase.from("referral_abuse_log").insert({
         user_id: order.user_id ?? null,
-        code: order.referral_code_used,
+        code: pendingRef.code,
         phone: order.customer_phone,
         reason: "Duplicate referral reward attempt (customer already rewarded)",
       });
+      await supabase.from("referrals").update({
+        status: "rejected",
+        notes: "Duplicate referral reward attempt (customer already rewarded)",
+      }).eq("id", pendingRef.id);
       return;
     }
   }
 
-  // 3. Anti-abuse: First-time customers only (Check if customer has any prior delivered order)
+  // 3. Anti-abuse: First-time customers only (Check if customer has any prior confirmed, preparing, out_for_delivery, or delivered order)
   const orderFilters: string[] = [];
   if (order.user_id) orderFilters.push(`user_id.eq.${order.user_id}`);
   if (order.customer_phone) orderFilters.push(`customer_phone.eq.${order.customer_phone}`);
@@ -109,44 +129,43 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     const { data: priorOrders } = await supabase
       .from("orders")
       .select("id")
-      .eq("status", "delivered")
+      .in("status", ["confirmed", "preparing", "out_for_delivery", "delivered"])
       .neq("id", orderId)
       .or(orderFilters.join(","));
 
     if (priorOrders && priorOrders.length > 0) {
       await supabase.from("referral_abuse_log").insert({
         user_id: order.user_id ?? null,
-        code: order.referral_code_used,
+        code: pendingRef.code,
         phone: order.customer_phone,
-        reason: "Not a first-time customer (has prior delivered order)",
+        reason: "Not a first-time customer (has prior confirmed or delivered order)",
       });
+      await supabase.from("referrals").update({
+        status: "rejected",
+        notes: "Not a first-time customer (has prior confirmed or delivered order)",
+      }).eq("id", pendingRef.id);
       return;
     }
   }
 
-  // 4. Fetch reward settings
+  // 4. Locked-in reward amount from signup time (do not recalculate from settings)
+  const rewardAmount = Number(pendingRef.reward_amount) || 2000;
   const settings = await getRewardSettings();
-  const rewardAmount = settings?.reward_value ?? 2000;
   const expiryDays = settings?.expiry_days ?? 60;
   const expiresAt = expiryDays > 0
     ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  // 5. Create referral record (protected by DB unique constraints)
-  const { error: refErr } = await supabase.from("referrals").insert({
-    referrer_id: refCode.user_id,
-    referred_id: order.user_id ?? null,
-    referred_phone: order.customer_phone,
-    code: order.referral_code_used,
+  // 5. Update referral record from pending -> rewarded
+  const { error: refErr } = await supabase.from("referrals").update({
     status: "rewarded",
-    reward_amount: rewardAmount,
-    reward_type: "cash_credit",
     order_id: orderId,
     rewarded_at: new Date().toISOString(),
-  });
+    notes: "Confirmed first order reward granted",
+  }).eq("id", pendingRef.id);
 
   if (refErr) {
-    console.warn("[processReferralReward] Insert referral error:", refErr.message);
+    console.warn("[processReferralReward] Update referral error:", refErr.message);
     return;
   }
 
@@ -156,7 +175,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     reward_type: "cash_credit",
     amount: rewardAmount,
     balance: rewardAmount,
-    description: `Referral reward — friend used code ${order.referral_code_used}`,
+    description: `Referral reward — friend used code ${pendingRef.code}`,
     source: "referral",
     expires_at: expiresAt,
     is_used: false,
@@ -524,9 +543,9 @@ export default function AdminOrders() {
       }
     }
 
-    if (status === "delivered") {
+    if (status === "confirmed") {
       const order = orders.find((o) => o.id === orderId);
-      if (order?.referral_code_used) {
+      if (order && order.user_id) {
         processReferralReward(orderId, order).catch(() => {});
       }
     }

@@ -126,7 +126,6 @@ type CheckoutForm = {
   deliveryZoneId: string;
   instructions: string;
   deliveryTime: string;
-  referralCode: string;
 };
 
 /* ─── Payment bank details — update here to change account info site-wide ─── */
@@ -154,9 +153,6 @@ export default function CartPanel() {
   const [closeHour, setCloseHour] = useState(CLOSE_HOUR_FALLBACK);
   const [closedDays, setClosedDays] = useState<Set<number>>(new Set());
   const [publicHolidayDates, setPublicHolidayDates] = useState<string[]>([]);
-  const [referralValid, setReferralValid] = useState<null | boolean>(null);
-  const [referralMsg, setReferralMsg] = useState("");
-  const [validatingCode, setValidatingCode] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
@@ -340,7 +336,6 @@ export default function CartPanel() {
     address: "", email: profile?.email || "",
     deliveryZoneId: "",
     instructions: "", deliveryTime: slots[0]?.value ?? "",
-    referralCode: "",
   });
 
   /* Pre-fill user info (including saved address) when profile loads */
@@ -404,38 +399,6 @@ export default function CartPanel() {
       const maxApply = Math.min(walletBalance, total);
       setWalletApplied(maxApply);
     }
-  };
-
-  /* ── Referral code validation ── */
-  const handleValidateReferral = async () => {
-    const code = form.referralCode.trim().toUpperCase();
-    if (!code) return;
-    setValidatingCode(true);
-    setReferralValid(null);
-    const { data: refCode } = await supabase
-      .from("referral_codes")
-      .select("*, profiles(id, email, phone, full_name)")
-      .eq("code", code)
-      .single();
-    if (!refCode) {
-      setReferralValid(false);
-      setReferralMsg("Invalid referral code");
-    } else {
-      const referrerProfile = (refCode as any).profiles;
-      const isSelfUserId = Boolean(user?.id && user.id === refCode.user_id);
-      const isSelfPhone = Boolean(form.phone.trim() && referrerProfile?.phone && normalizePhone(form.phone) === normalizePhone(referrerProfile.phone));
-      const isSelfEmail = Boolean(form.email.trim() && referrerProfile?.email && form.email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase());
-
-      if (isSelfUserId || isSelfPhone || isSelfEmail) {
-        setReferralValid(false);
-        setReferralMsg("You cannot use your own referral code");
-      } else {
-        const referrerName = referrerProfile?.full_name ?? "a friend";
-        setReferralValid(true);
-        setReferralMsg(`Valid! Referred by ${referrerName}`);
-      }
-    }
-    setValidatingCode(false);
   };
 
   /* ── Promo code ── */
@@ -601,7 +564,7 @@ export default function CartPanel() {
       delivery_time: selectedSlot?.label ?? null,
       delivery_date: deliveryDate,
       special_instructions: form.instructions || null,
-      referral_code_used: (referralValid && form.referralCode) ? form.referralCode.toUpperCase() : null,
+      referral_code_used: null,
     };
 
     // Save directly to Supabase
@@ -1160,31 +1123,6 @@ export default function CartPanel() {
                         </div>
                       )}
                     </>
-                  )}
-                </div>
-
-                {/* Referral code */}
-                <div>
-                  <label className="font-chewy text-lg text-gray-800 mb-1 block">
-                    Referral Code <span className="text-sm text-gray-400 font-[Montserrat] font-normal">(optional)</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                      <input type="text" placeholder="Enter a referral code" value={form.referralCode}
-                        onChange={(e) => { setForm((f) => ({ ...f, referralCode: e.target.value.toUpperCase() })); setReferralValid(null); }}
-                        className={`${fieldClass} pl-10 uppercase`} />
-                    </div>
-                    <button type="button" onClick={handleValidateReferral} disabled={!form.referralCode.trim() || validatingCode}
-                      className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-xl text-sm font-[Montserrat] font-semibold disabled:opacity-40">
-                      {validatingCode ? "…" : "Apply"}
-                    </button>
-                  </div>
-                  {referralMsg && (
-                    <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-[Montserrat] ${referralValid ? "text-green-600" : "text-red-500"}`}>
-                      {referralValid ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                      {referralMsg}
-                    </div>
                   )}
                 </div>
 
