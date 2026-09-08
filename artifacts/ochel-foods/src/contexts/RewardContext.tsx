@@ -57,28 +57,44 @@ export function RewardProvider({ children }: { children: ReactNode }) {
       .order("created_at", { ascending: false });
     if (pendData) setPendingReferrals(pendData as DBReferral[]);
 
-    // Load referral code — auto-generate via Supabase if not yet created
+    // Load referral code — auto-generate via Supabase if not yet created.
+    // Use maybeSingle() so a missing row returns null (not an error),
+    // preventing the spurious "else" branch from firing when the row exists.
     const { data: rcData } = await supabase
       .from("referral_codes")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
     if (rcData) {
       setReferralCode(rcData as DBReferralCode);
     } else {
-      // First login — create a code automatically (RLS INSERT policy required)
+      // First login — create a code automatically (RLS INSERT policy required).
+      // Re-check after each failed insert in case a concurrent request already
+      // created the row (race condition guard).
       for (let i = 0; i < 5; i++) {
         const code = Math.random().toString(36).toUpperCase().slice(2, 8);
         const { error } = await supabase
           .from("referral_codes")
           .insert({ user_id: user.id, code });
         if (!error) {
+          // Insert succeeded — read back the canonical row
           const { data: created } = await supabase
             .from("referral_codes")
             .select("*")
             .eq("user_id", user.id)
-            .single();
+            .maybeSingle();
           if (created) setReferralCode(created as DBReferralCode);
+          break;
+        }
+        // Insert failed (likely a unique-constraint violation from a concurrent
+        // request that already created the row). Read whatever is there now.
+        const { data: existing } = await supabase
+          .from("referral_codes")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (existing) {
+          setReferralCode(existing as DBReferralCode);
           break;
         }
       }
@@ -113,6 +129,21 @@ export function RewardProvider({ children }: { children: ReactNode }) {
 
   const generateReferralCode = async (): Promise<string | null> => {
     if (!user) return null;
+
+    // Idempotent: if a code already exists for this user, return it unchanged.
+    // This prevents a second code being created if the user clicks the button
+    // again or if state wasn't loaded yet.
+    const { data: existing } = await supabase
+      .from("referral_codes")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existing) {
+      setReferralCode(existing as DBReferralCode);
+      return (existing as DBReferralCode).code;
+    }
+
+    // No code exists yet — generate one (retry on collision)
     for (let i = 0; i < 5; i++) {
       const code = Math.random().toString(36).toUpperCase().slice(2, 8);
       const { data: created, error } = await supabase

@@ -199,6 +199,9 @@ create policy "Users can insert own code" on public.referral_codes for insert wi
 create policy "Admins can manage all" on public.referral_codes for all using (
   exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
 );
+-- One code per user — hard DB-level guarantee (app logic also enforces this idempotently)
+create unique index if not exists idx_referral_codes_unique_user
+  on public.referral_codes (user_id);
 
 -- ─────────────────────────────────────────────────────────────
 -- REFERRALS (tracking)
