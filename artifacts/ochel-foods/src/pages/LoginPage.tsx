@@ -52,27 +52,56 @@ export default function LoginPage() {
     const code = rawCode.trim().toUpperCase();
     if (!code) return;
 
-    const { data: refCode } = await supabase
+    // Step 1: Look up the referral code row.
+    // NOTE: Do NOT use an embedded `profiles(...)` join here — referral_codes.user_id
+    // references auth.users(id), not profiles(id) directly, so PostgREST cannot
+    // resolve that join and returns null for the whole row, silently killing the referral.
+    // We do a separate profiles query below instead.
+    const { data: refCode, error: refCodeError } = await supabase
       .from("referral_codes")
-      .select("*, profiles(id, email, phone, full_name)")
+      .select("id, user_id, code")
       .eq("code", code)
       .maybeSingle();
 
-    if (!refCode) return;
+    if (refCodeError) {
+      console.error("[savePendingReferral] referral_codes lookup failed:", refCodeError, { code, userId });
+      return;
+    }
+    if (!refCode) {
+      console.warn("[savePendingReferral] No referral_codes row found for code:", code);
+      return;
+    }
 
-    const referrerProfile = (refCode as any).profiles;
+    // Step 2: Fetch the referrer's profile separately for self-referral checks.
+    const { data: referrerProfile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, email, phone")
+      .eq("id", refCode.user_id)
+      .maybeSingle();
+
+    if (profileError) {
+      // Non-fatal — log it but continue. Self-referral check will be ID-only if profile is missing.
+      console.warn("[savePendingReferral] Could not fetch referrer profile (self-referral check will be ID-only):", profileError);
+    }
 
     // Anti-abuse: Self-referral check (ID, phone, email)
     const isSelfId = refCode.user_id === userId;
-    const isSelfPhone = Boolean(phone && referrerProfile?.phone && normalizePhone(phone) === normalizePhone(referrerProfile.phone));
-    const isSelfEmail = Boolean(email && referrerProfile?.email && email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase());
+    const isSelfPhone = Boolean(
+      phone && referrerProfile?.phone &&
+      normalizePhone(phone) === normalizePhone(referrerProfile.phone)
+    );
+    const isSelfEmail = Boolean(
+      email && referrerProfile?.email &&
+      email.trim().toLowerCase() === referrerProfile.email.trim().toLowerCase()
+    );
 
     if (isSelfId || isSelfPhone || isSelfEmail) {
+      console.warn("[savePendingReferral] Self-referral blocked:", { isSelfId, isSelfPhone, isSelfEmail, code, userId });
       await supabase.from("referral_abuse_log").insert({
         user_id: userId,
         code,
         phone: phone || null,
-        reason: "Self-referral attempt at signup",
+        reason: `Self-referral attempt at signup (id=${isSelfId}, phone=${isSelfPhone}, email=${isSelfEmail})`,
       });
       return;
     }
@@ -81,7 +110,7 @@ export default function LoginPage() {
     const settings = await getRewardSettings();
     const rewardAmount = settings?.reward_value ?? 2000;
 
-    await supabase.from("referrals").insert({
+    const { error: insertError } = await supabase.from("referrals").insert({
       referrer_id: refCode.user_id,
       referred_id: userId,
       referred_phone: phone ? normalizePhone(phone) : null,
@@ -91,6 +120,16 @@ export default function LoginPage() {
       reward_type: "cash_credit",
       notes: "Pending friend's first confirmed order",
     });
+
+    if (insertError) {
+      console.error("[savePendingReferral] Failed to insert referral row:", insertError, {
+        code, userId, referrerId: refCode.user_id, rewardAmount,
+      });
+    } else {
+      console.info("[savePendingReferral] Referral saved successfully:", {
+        code, referred_id: userId, referrer_id: refCode.user_id, rewardAmount,
+      });
+    }
   }
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
