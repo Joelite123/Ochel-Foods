@@ -42,11 +42,26 @@ function normalizePhone(phone?: string | null): string {
   return digits;
 }
 
-async function processReferralReward(orderId: string, order: OrderWithItems) {
-  if (!order.user_id) return;
+async function processReferralReward(orderId: string) {
+  // Fetch the order fresh from the DB — do not rely on stale React state passed
+  // from the caller, which may not reflect the latest data.
+  const { data: order, error: orderFetchErr } = await supabase
+    .from("orders")
+    .select("id, user_id, customer_phone, customer_email")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderFetchErr || !order) {
+    console.error("[processReferralReward] Could not fetch order:", orderFetchErr, { orderId });
+    return;
+  }
+  if (!order.user_id) {
+    console.info("[processReferralReward] Order has no user_id (guest order) — skipping.", { orderId });
+    return;
+  }
 
   // Find signup-time pending referral for this user
-  const { data: pendingRef } = await supabase
+  const { data: pendingRef, error: pendingRefErr } = await supabase
     .from("referrals")
     .select("*")
     .eq("referred_id", order.user_id)
@@ -55,16 +70,40 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     .limit(1)
     .maybeSingle();
 
-  if (!pendingRef) return;
+  if (pendingRefErr) {
+    console.error("[processReferralReward] Error querying pending referral:", pendingRefErr, { orderId, userId: order.user_id });
+    return;
+  }
+  if (!pendingRef) {
+    console.info("[processReferralReward] No pending referral found for user — not a referred customer.", { orderId, userId: order.user_id });
+    return;
+  }
 
-  const { data: refCode } = await supabase
+  // Look up the referral code row.
+  // NOTE: Do NOT use an embedded `profiles(...)` join here — referral_codes.user_id
+  // references auth.users(id), not profiles(id) directly, so PostgREST cannot
+  // resolve that join and silently returns null for the whole row.
+  // Fetch the referrer's profile in a separate query instead.
+  const { data: refCode, error: refCodeErr } = await supabase
     .from("referral_codes")
-    .select("*, profiles(id, email, phone, full_name)")
+    .select("id, user_id, code, total_referrals, total_earned")
     .eq("code", pendingRef.code)
-    .single();
+    .maybeSingle();
 
-  if (!refCode) return;
-  const referrerProfile = (refCode as any).profiles;
+  if (refCodeErr || !refCode) {
+    console.error("[processReferralReward] Could not find referral_codes row for code:", pendingRef.code, refCodeErr, { orderId });
+    return;
+  }
+
+  const { data: referrerProfile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("id, email, phone, referral_wallet_balance")
+    .eq("id", refCode.user_id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.warn("[processReferralReward] Could not fetch referrer profile (anti-abuse checks will be ID-only):", profileErr);
+  }
 
   // 1. Anti-abuse: Self-referral check (User ID, Phone, Email)
   const isSelfUserId = Boolean(order.user_id && order.user_id === refCode.user_id);
@@ -80,11 +119,12 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
   );
 
   if (isSelfUserId || isSelfPhone || isSelfEmail) {
+    console.warn("[processReferralReward] Self-referral blocked:", { isSelfUserId, isSelfPhone, isSelfEmail, code: pendingRef.code, orderId });
     await supabase.from("referral_abuse_log").insert({
       user_id: order.user_id ?? null,
       code: pendingRef.code,
       phone: order.customer_phone,
-      reason: "Self-referral attempt (matched user, phone, or email)",
+      reason: `Self-referral blocked at confirmation (id=${isSelfUserId}, phone=${isSelfPhone}, email=${isSelfEmail})`,
     });
     await supabase.from("referrals").update({
       status: "rejected",
@@ -93,10 +133,10 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     return;
   }
 
-  // 2. Anti-abuse: Stop cross-code exploit (Check if this customer was EVER rewarded under ANY code)
+  // 2. Anti-abuse: Stop cross-code exploit (customer already rewarded under any code)
   const refFilters: string[] = [];
   if (order.user_id) refFilters.push(`referred_id.eq.${order.user_id}`);
-  if (order.customer_phone) refFilters.push(`referred_phone.eq.${order.customer_phone}`);
+  if (order.customer_phone) refFilters.push(`referred_phone.eq.${normalizePhone(order.customer_phone)}`);
 
   if (refFilters.length > 0) {
     const { data: existing } = await supabase
@@ -106,6 +146,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
       .or(refFilters.join(","));
 
     if (existing && existing.length > 0) {
+      console.warn("[processReferralReward] Customer already rewarded under a prior code — rejecting.", { code: pendingRef.code, orderId });
       await supabase.from("referral_abuse_log").insert({
         user_id: order.user_id ?? null,
         code: pendingRef.code,
@@ -120,10 +161,10 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     }
   }
 
-  // 3. Anti-abuse: First-time customers only (Check if customer has any prior confirmed, preparing, out_for_delivery, or delivered order)
+  // 3. Anti-abuse: First-time customers only
   const orderFilters: string[] = [];
   if (order.user_id) orderFilters.push(`user_id.eq.${order.user_id}`);
-  if (order.customer_phone) orderFilters.push(`customer_phone.eq.${order.customer_phone}`);
+  if (order.customer_phone) orderFilters.push(`customer_phone.eq.${normalizePhone(order.customer_phone)}`);
 
   if (orderFilters.length > 0) {
     const { data: priorOrders } = await supabase
@@ -134,6 +175,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
       .or(orderFilters.join(","));
 
     if (priorOrders && priorOrders.length > 0) {
+      console.warn("[processReferralReward] Not a first-time customer — rejecting referral.", { code: pendingRef.code, orderId, priorOrderCount: priorOrders.length });
       await supabase.from("referral_abuse_log").insert({
         user_id: order.user_id ?? null,
         code: pendingRef.code,
@@ -148,7 +190,7 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     }
   }
 
-  // 4. Locked-in reward amount from signup time (do not recalculate from settings)
+  // 4. Locked-in reward amount from signup time
   const rewardAmount = Number(pendingRef.reward_amount) || 2000;
   const settings = await getRewardSettings();
   const expiryDays = settings?.expiry_days ?? 60;
@@ -156,21 +198,21 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  // 5. Update referral record from pending -> rewarded
-  const { error: refErr } = await supabase.from("referrals").update({
+  // 5. Update referral record pending → rewarded
+  const { error: refUpdateErr } = await supabase.from("referrals").update({
     status: "rewarded",
     order_id: orderId,
     rewarded_at: new Date().toISOString(),
     notes: "Confirmed first order reward granted",
   }).eq("id", pendingRef.id);
 
-  if (refErr) {
-    console.warn("[processReferralReward] Update referral error:", refErr.message);
+  if (refUpdateErr) {
+    console.error("[processReferralReward] Failed to update referral status to rewarded:", refUpdateErr, { referralId: pendingRef.id });
     return;
   }
 
   // 6. Issue reward to referrer's wallet
-  await supabase.from("user_rewards").insert({
+  const { error: rewardInsertErr } = await supabase.from("user_rewards").insert({
     user_id: refCode.user_id,
     reward_type: "cash_credit",
     amount: rewardAmount,
@@ -181,26 +223,41 @@ async function processReferralReward(orderId: string, order: OrderWithItems) {
     is_used: false,
   });
 
+  if (rewardInsertErr) {
+    console.error("[processReferralReward] Failed to insert user_rewards row:", rewardInsertErr, { referrerId: refCode.user_id, rewardAmount });
+    // Attempt to roll back the referral status update so it can be retried
+    await supabase.from("referrals").update({ status: "pending", notes: "Reward insert failed — reset to pending for retry" }).eq("id", pendingRef.id);
+    return;
+  }
+
   // 7. Update referrer's wallet balance in profile
-  const { data: p } = await supabase
-    .from("profiles")
-    .select("referral_wallet_balance")
-    .eq("id", refCode.user_id)
-    .single();
-  if (p) {
-    await supabase.from("profiles").update({
-      referral_wallet_balance: Number(p.referral_wallet_balance) + rewardAmount,
-    }).eq("id", refCode.user_id);
+  const currentBalance = Number(referrerProfile?.referral_wallet_balance ?? 0);
+  const { error: profileUpdateErr } = await supabase.from("profiles").update({
+    referral_wallet_balance: currentBalance + rewardAmount,
+  }).eq("id", refCode.user_id);
+
+  if (profileUpdateErr) {
+    console.error("[processReferralReward] Failed to update referral_wallet_balance on profile:", profileUpdateErr, { referrerId: refCode.user_id });
   }
 
   // 8. Update referral code stats
-  await supabase.from("referral_codes").update({
+  const { error: statsErr } = await supabase.from("referral_codes").update({
     total_referrals: refCode.total_referrals + 1,
     total_earned: Number(refCode.total_earned) + rewardAmount,
   }).eq("id", refCode.id);
+
+  if (statsErr) {
+    console.warn("[processReferralReward] Failed to update referral_codes stats (non-fatal):", statsErr);
+  }
+
+  console.info("[processReferralReward] ✅ Referral reward issued successfully:", {
+    orderId, referralId: pendingRef.id, referrerId: refCode.user_id, rewardAmount, code: pendingRef.code,
+  });
 }
 
+
 /* ── CSV Export ── */
+
 function exportCSV(orders: OrderWithItems[]) {
   const headers = [
     "Order ID", "Order Date", "Order Status", "Customer Name", "Phone", "Email",
@@ -544,10 +601,11 @@ export default function AdminOrders() {
     }
 
     if (status === "confirmed") {
-      const order = orders.find((o) => o.id === orderId);
-      if (order && order.user_id) {
-        processReferralReward(orderId, order).catch(() => {});
-      }
+      // processReferralReward fetches the order fresh from DB itself —
+      // do not pass the stale React state `order` variable here.
+      processReferralReward(orderId).catch((err) => {
+        console.error("[updateStatus] processReferralReward threw unexpectedly:", err, { orderId });
+      });
     }
   };
 
