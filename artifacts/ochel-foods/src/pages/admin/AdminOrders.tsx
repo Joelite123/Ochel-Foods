@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Search, RefreshCw, Eye, X, Download, Printer, Filter, Plus,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Calendar,
 } from "lucide-react";
 import { supabase, DBOrder, DBOrderTimeline } from "@/lib/supabase";
 import { getRewardSettings } from "@/lib/rewardSettingsCache";
@@ -444,38 +445,179 @@ function getUniqueZones(orders: OrderWithItems[]) {
   return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
 }
 
+type DatePreset = "this_month" | "today" | "this_week" | "last_month" | "all" | "custom";
+
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+  { value: "this_month", label: "This Month" },
+  { value: "today",      label: "Today" },
+  { value: "this_week",  label: "This Week" },
+  { value: "last_month", label: "Last Month" },
+  { value: "all",        label: "All Time" },
+  { value: "custom",     label: "Custom Range" },
+];
+
+function getPageNumbers(currentPage: number, totalPages: number): (number | string)[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+  if (currentPage >= totalPages - 3) {
+    return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+  return [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
+}
+
 export default function AdminOrders() {
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  // Search (with debounce)
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+
+  // Filters
+  const [datePreset, setDatePreset] = useState<DatePreset>("this_month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
   const [zoneFilter, setZoneFilter] = useState("");
+  const [allZones, setAllZones] = useState<{ id: string; label: string }[]>([]);
+
+  // Other UI state
   const [selected, setSelected] = useState<OrderWithItems | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showManualOrder, setShowManualOrder] = useState(false);
   const [timeline, setTimeline] = useState<DBOrderTimeline[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   /* Mark all as read when admin opens this page */
   const { markAllRead } = useNotifications();
   useEffect(() => { markAllRead(); }, []);
 
+  /* Debounce search input */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  /* Load all delivery zones for the filter dropdown */
+  useEffect(() => {
+    supabase
+      .from("delivery_zones")
+      .select("id, label")
+      .order("sort_order", { ascending: true })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setAllZones(data);
+        }
+      });
+  }, []);
+
+  /* Date calculation for presets */
+  const getDateRangeForPreset = useCallback((preset: DatePreset, cStart: string, cEnd: string) => {
+    const now = new Date();
+    if (preset === "today") {
+      const s = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const e = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return { start: s.toISOString(), end: e.toISOString() };
+    }
+    if (preset === "this_week") {
+      const s = new Date(now);
+      s.setDate(now.getDate() - 6);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(now);
+      e.setHours(23, 59, 59, 999);
+      return { start: s.toISOString(), end: e.toISOString() };
+    }
+    if (preset === "this_month") {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start: s.toISOString(), end: e.toISOString() };
+    }
+    if (preset === "last_month") {
+      const s = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+      const e = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+      return { start: s.toISOString(), end: e.toISOString() };
+    }
+    if (preset === "custom") {
+      const s = cStart ? new Date(cStart + "T00:00:00").toISOString() : null;
+      const e = cEnd ? new Date(cEnd + "T23:59:59.999").toISOString() : null;
+      return { start: s, end: e };
+    }
+    // "all"
+    return { start: null, end: null };
+  }, []);
+
+  /* Construct query with current filters */
+  const buildOrdersQuery = useCallback((selectStr: string, countType?: "exact") => {
+    let q = supabase
+      .from("orders")
+      .select(selectStr, countType ? { count: countType } : undefined);
+
+    const { start, end } = getDateRangeForPreset(datePreset, customStart, customEnd);
+    if (start) q = q.gte("created_at", start);
+    if (end) q = q.lte("created_at", end);
+
+    if (statusFilter !== "all") {
+      q = q.eq("status", statusFilter);
+    }
+    if (dateFilter) {
+      q = q.eq("delivery_date", dateFilter);
+    }
+    if (zoneFilter) {
+      q = q.eq("delivery_zone_id", zoneFilter);
+    }
+
+    const term = search.trim().replace(/['"%,]/g, "");
+    if (term) {
+      const hex = term.replace(/^#/, "");
+      if (/^[0-9a-fA-F]{8}$/.test(hex)) {
+        const lower = hex.toLowerCase();
+        q = q.gte("id", `${lower}-0000-0000-0000-000000000000`)
+             .lte("id", `${lower}-ffff-ffff-ffff-ffffffffffff`);
+      } else if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(hex)) {
+        q = q.eq("id", hex);
+      } else {
+        q = q.or(`customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%,customer_email.ilike.%${term}%`);
+      }
+    }
+
+    return q.order("created_at", { ascending: false });
+  }, [datePreset, customStart, customEnd, statusFilter, dateFilter, zoneFilter, search, getDateRangeForPreset]);
+
+  /* Main paginated load function */
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*, order_items(*), delivery_zones(label, price)")
-        .order("created_at", { ascending: false });
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      const q = buildOrdersQuery("*, order_items(*), delivery_zones(label, price)", "exact");
+      const { data, count, error } = await q.range(from, to);
+
       if (error) throw error;
-      if (data) setOrders(data as OrderWithItems[]);
-    } catch {
+      setOrders((data as OrderWithItems[]) ?? []);
+      setTotalCount(count ?? 0);
+    } catch (err) {
+      console.error("[AdminOrders] Load error:", err);
       toast.error("Failed to load orders");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [page, pageSize, buildOrdersQuery]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -531,9 +673,13 @@ export default function AdminOrders() {
             .select("*")
             .eq("order_id", newOrder.id);
 
+          setTotalCount((prev) => prev + 1);
           setOrders((prev) => {
             if (prev.find((o) => o.id === newOrder.id)) return prev;
-            return [{ ...newOrder, order_items: items ?? [] }, ...prev];
+            if (page === 1) {
+              return [{ ...newOrder, order_items: items ?? [] }, ...prev.slice(0, pageSize - 1)];
+            }
+            return prev;
           });
         }
       )
@@ -551,14 +697,13 @@ export default function AdminOrders() {
         }
       )
       .subscribe((status) => {
-        // If CHANNEL_ERROR, realtime not enabled — manual refresh still works
         if (status === "CHANNEL_ERROR") {
           console.info("[AdminOrders] Realtime not enabled. Enable it in Supabase dashboard for live updates.");
         }
       });
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [page, pageSize]);
 
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(orderId);
@@ -601,31 +746,17 @@ export default function AdminOrders() {
     }
 
     if (status === "confirmed") {
-      // processReferralReward fetches the order fresh from DB itself —
-      // do not pass the stale React state `order` variable here.
       processReferralReward(orderId).catch((err) => {
         console.error("[updateStatus] processReferralReward threw unexpectedly:", err, { orderId });
       });
     }
   };
 
-  // All unique zones found in current orders list
-  const uniqueZones = getUniqueZones(orders);
-
-  const filtered = orders.filter((o) => {
-    const matchSearch =
-      !search ||
-      o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_phone.includes(search) ||
-      o.id.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || o.status === statusFilter;
-    const matchDate = !dateFilter || o.delivery_date === dateFilter;
-    const matchZone = !zoneFilter || o.delivery_zone_id === zoneFilter;
-    return matchSearch && matchStatus && matchDate && matchZone;
-  });
+  // Unique zones for filter dropdown (prefer all fetched zones, fallback to loaded orders)
+  const uniqueZones = allZones.length > 0 ? allZones : getUniqueZones(orders);
 
   const openDetail = async (order: OrderWithItems) => {
-    if (!order.order_items) {
+    if (!order.order_items || order.order_items.length === 0) {
       const { data } = await supabase.from("order_items").select("*").eq("order_id", order.id);
       setSelected({ ...order, order_items: data ?? [] });
     } else {
@@ -633,20 +764,87 @@ export default function AdminOrders() {
     }
   };
 
-  const activeFilterCount = [statusFilter !== "all", !!dateFilter, !!zoneFilter].filter(Boolean).length;
+  /* Export CSV of all matching orders (across pages) */
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const q = buildOrdersQuery("*, order_items(*), delivery_zones(label, price)");
+      const { data, error } = await q.range(0, 4999);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        exportCSV(data as OrderWithItems[]);
+        toast.success(`Exported ${data.length} orders to CSV`);
+      } else {
+        toast.info("No orders found to export");
+      }
+    } catch {
+      toast.error("Failed to export orders");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const activeFilterCount = [
+    statusFilter !== "all",
+    !!dateFilter,
+    !!zoneFilter,
+    datePreset !== "this_month",
+  ].filter(Boolean).length;
+
+  const handleClearFilters = () => {
+    setStatusFilter("all");
+    setDateFilter("");
+    setZoneFilter("");
+    setDatePreset("this_month");
+    setCustomStart("");
+    setCustomEnd("");
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const fromItem = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toItem = Math.min(totalCount, page * pageSize);
 
   return (
     <div className="space-y-4">
-      {/* Search + Actions bar */}
+      {/* Search + Date presets + Actions bar */}
       <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-48">
+        {/* Search input */}
+        <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             placeholder="Search by name, phone, order ID…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-3 py-2 pl-9 text-sm font-[Montserrat] focus:outline-none"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full border-2 border-gray-200 focus:border-[#E8192C] rounded-xl px-3 py-2 pl-9 pr-8 text-sm font-[Montserrat] focus:outline-none"
           />
+          {searchInput && (
+            <button
+              onClick={() => { setSearchInput(""); setSearch(""); setPage(1); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Date presets */}
+        <div className="flex flex-wrap items-center gap-1 bg-gray-100 p-1 rounded-xl">
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => { setDatePreset(p.value); setPage(1); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-[Montserrat] transition-all ${
+                datePreset === p.value
+                  ? "bg-white text-[#E8192C] shadow-sm"
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
 
         {/* Filters toggle */}
@@ -669,11 +867,13 @@ export default function AdminOrders() {
 
         {/* CSV Export */}
         <button
-          onClick={() => exportCSV(filtered)}
+          onClick={handleExportCSV}
+          disabled={exporting || loading || totalCount === 0}
           title="Export filtered orders as CSV"
-          className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 px-3 py-2 rounded-xl text-sm font-[Montserrat] transition-colors"
+          className="flex items-center gap-2 border border-gray-200 hover:border-gray-300 text-gray-600 px-3 py-2 rounded-xl text-sm font-[Montserrat] transition-colors disabled:opacity-40"
         >
-          <Download className="w-4 h-4" /> CSV
+          <Download className={`w-4 h-4 ${exporting ? "animate-bounce" : ""}`} />
+          {exporting ? "Exporting…" : "CSV"}
         </button>
 
         {/* Refresh */}
@@ -695,13 +895,13 @@ export default function AdminOrders() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap gap-4 items-end">
           {/* Status filter */}
           <div className="flex flex-col gap-1 min-w-40">
             <label className="text-xs font-semibold text-gray-500 font-[Montserrat] uppercase tracking-wide">Order Status</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
             >
               <option value="all">All Statuses</option>
@@ -715,7 +915,7 @@ export default function AdminOrders() {
             <input
               type="date"
               value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
+              onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
               className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
             />
           </div>
@@ -726,7 +926,7 @@ export default function AdminOrders() {
               <label className="text-xs font-semibold text-gray-500 font-[Montserrat] uppercase tracking-wide">Delivery Zone</label>
               <select
                 value={zoneFilter}
-                onChange={(e) => setZoneFilter(e.target.value)}
+                onChange={(e) => { setZoneFilter(e.target.value); setPage(1); }}
                 className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
               >
                 <option value="">All Zones</option>
@@ -735,11 +935,31 @@ export default function AdminOrders() {
             </div>
           )}
 
+          {/* Custom Date Range pickers */}
+          <div className="flex flex-col gap-1 min-w-36">
+            <label className="text-xs font-semibold text-gray-500 font-[Montserrat] uppercase tracking-wide">Created From</label>
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => { setCustomStart(e.target.value); setDatePreset("custom"); setPage(1); }}
+              className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
+            />
+          </div>
+          <div className="flex flex-col gap-1 min-w-36">
+            <label className="text-xs font-semibold text-gray-500 font-[Montserrat] uppercase tracking-wide">Created To</label>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => { setCustomEnd(e.target.value); setDatePreset("custom"); setPage(1); }}
+              className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
+            />
+          </div>
+
           {/* Clear filters */}
           {activeFilterCount > 0 && (
             <div className="flex flex-col justify-end">
               <button
-                onClick={() => { setStatusFilter("all"); setDateFilter(""); setZoneFilter(""); }}
+                onClick={handleClearFilters}
                 className="text-xs text-[#E8192C] font-semibold font-[Montserrat] px-3 py-2 rounded-xl hover:bg-red-50 border border-[#E8192C] transition-colors"
               >
                 Clear Filters
@@ -749,14 +969,43 @@ export default function AdminOrders() {
         </div>
       )}
 
-      {/* Results count */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400 font-[Montserrat]">
-          Showing <strong className="text-gray-700">{filtered.length}</strong> of {orders.length} orders
+      {/* Results count & page size */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-500 font-[Montserrat]">
+          {loading ? (
+            "Loading orders…"
+          ) : totalCount === 0 ? (
+            "No orders found"
+          ) : (
+            <>
+              Showing <strong className="text-gray-800">{fromItem}–{toItem}</strong> of{" "}
+              <strong className="text-gray-800">{totalCount.toLocaleString()}</strong> orders
+              {datePreset !== "all" && (
+                <span className="text-gray-400 ml-1">
+                  ({DATE_PRESETS.find((p) => p.value === datePreset)?.label})
+                </span>
+              )}
+            </>
+          )}
         </p>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <p className="text-xs text-gray-400 font-[Montserrat]">Live</p>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs font-[Montserrat] text-gray-400">
+            <span>Per page:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold text-gray-700 bg-white focus:outline-none"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            <p className="text-xs text-gray-400 font-[Montserrat]">Live</p>
+          </div>
         </div>
       </div>
 
@@ -780,14 +1029,24 @@ export default function AdminOrders() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">Loading…</td>
+                  <td colSpan={9} className="text-center py-12 text-gray-400 font-[Montserrat]">Loading orders…</td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-400">No orders found</td>
+                  <td colSpan={9} className="text-center py-12 text-gray-400 font-[Montserrat]">
+                    No orders found
+                    {datePreset !== "all" && (
+                      <button
+                        onClick={() => { setDatePreset("all"); setPage(1); }}
+                        className="block mx-auto mt-2 text-xs text-[#E8192C] underline font-semibold"
+                      >
+                        Search across All Time
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ) : (
-                filtered.map((o) => (
+                orders.map((o) => (
                   <tr key={o.id} className="hover:bg-gray-50 transition-colors">
                     <td
                       className="px-4 py-3 font-mono text-xs text-[#E8192C] cursor-pointer hover:underline"
@@ -872,6 +1131,75 @@ export default function AdminOrders() {
         </div>
       </div>
 
+      {/* Pagination Bar */}
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white rounded-2xl border border-gray-100 p-4">
+          <p className="text-xs text-gray-500 font-[Montserrat]">
+            Showing <strong className="text-gray-800">{fromItem}</strong> to{" "}
+            <strong className="text-gray-800">{toItem}</strong> of{" "}
+            <strong className="text-gray-800">{totalCount.toLocaleString()}</strong> orders
+          </p>
+
+          <div className="flex items-center gap-1 font-[Montserrat]">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1 || loading}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="First Page"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || loading}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Page number buttons */}
+            <div className="flex items-center gap-1 mx-1">
+              {getPageNumbers(page, totalPages).map((p, idx) =>
+                typeof p === "number" ? (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    disabled={loading}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                      page === p
+                        ? "bg-[#E8192C] text-white"
+                        : "border border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ) : (
+                  <span key={`dots-${idx}`} className="px-1 text-gray-400 text-xs">…</span>
+                )
+              )}
+            </div>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page >= totalPages || loading}
+              className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Last Page"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Manual order modal */}
       {showManualOrder && (
         <ManualOrderModal
@@ -881,6 +1209,7 @@ export default function AdminOrders() {
               if (prev.find((o) => o.id === (newOrder as OrderWithItems).id)) return prev;
               return [newOrder as OrderWithItems, ...prev];
             });
+            setTotalCount((prev) => prev + 1);
           }}
         />
       )}

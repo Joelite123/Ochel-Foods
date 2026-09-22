@@ -4,7 +4,9 @@ import { motion } from "framer-motion";
 import { Search, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import type { DBCombo } from "@/lib/supabase";
 import { comboDealProducts } from "@/data/menuData";
+import type { ComboProduct } from "@/data/menuData";
 import { useMenuData } from "@/hooks/useMenuData";
 import ProductCard from "@/components/ui/ProductCard";
 import ComboCard from "@/components/ui/ComboCard";
@@ -21,6 +23,39 @@ export default function HomePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { products, categories, loading: menuLoading } = useMenuData();
+
+  // Combos – fetched from Supabase so the admin "Visible on Special Offers page"
+  // toggle (is_active) is respected. Falls back to the static list on error.
+  const [combos, setCombos] = useState<ComboProduct[]>(comboDealProducts);
+  useEffect(() => {
+    function dbToCombo(c: DBCombo): ComboProduct {
+      return {
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        imageUrl: c.image_url,
+        comboPrice: c.combo_price,
+        originalPrice: c.original_price,
+        includes: c.includes,
+        tag: c.tag ?? undefined,
+      };
+    }
+    supabase
+      .from("combos")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Failed to fetch combos:", error);
+          return; // keep static fallback
+        }
+        if (data) {
+          setCombos((data as DBCombo[]).map(dbToCombo));
+        }
+      });
+  }, []);
 
   const featuredByCategory = [
     { label: "Pizza", id: "featured-pizza", slug: "/pizza", categorySlug: "pizza" },
@@ -234,7 +269,7 @@ export default function HomePage() {
                   </Link>
                 </div>
                 <div className="flex flex-col gap-4">
-                  {comboDealProducts.map((combo, idx) => (
+                  {combos.map((combo, idx) => (
                     <motion.div
                       key={combo.id}
                       initial={{ opacity: 0, y: 20 }}
