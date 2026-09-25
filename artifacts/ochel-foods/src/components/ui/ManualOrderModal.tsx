@@ -52,6 +52,7 @@ type DBCombo = {
 
 const STATUSES = [
   { value: "unpaid",           label: "Unpaid" },
+  { value: "pending",          label: "Pending" },
   { value: "confirmed",        label: "Confirmed" },
   { value: "preparing",        label: "Preparing" },
   { value: "out_for_delivery", label: "Out for Delivery" },

@@ -44,6 +44,26 @@ export default function AccountPage() {
     }
   }, [tab, user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel(`account-orders-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const updated = payload.new as DBOrder;
+          setOrders((prev) => prev.map((order) =>
+            order.id === updated.id ? { ...order, ...updated } : order
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
   const handleCopyCode = () => {
     if (referralCode) {
       navigator.clipboard.writeText(referralCode.code);
@@ -74,20 +94,22 @@ export default function AccountPage() {
   };
 
   const statusColor: Record<string, string> = {
-    unpaid: "bg-yellow-100 text-yellow-700",
-    confirmed: "bg-blue-100 text-blue-700",
-    preparing: "bg-orange-100 text-orange-700",
+    unpaid:           "bg-yellow-100 text-yellow-700",
+    pending:          "bg-amber-100 text-amber-700",
+    confirmed:        "bg-blue-100 text-blue-700",
+    preparing:        "bg-orange-100 text-orange-700",
     out_for_delivery: "bg-purple-100 text-purple-700",
-    delivered: "bg-green-100 text-green-700",
-    cancelled: "bg-gray-100 text-gray-500",
+    delivered:        "bg-green-100 text-green-700",
+    cancelled:        "bg-gray-100 text-gray-500",
   };
   const statusLabel: Record<string, string> = {
-    unpaid: "Unpaid",
-    confirmed: "Confirmed",
-    preparing: "Preparing",
+    unpaid:           "Unpaid",
+    pending:          "Pending",
+    confirmed:        "Confirmed",
+    preparing:        "Preparing",
     out_for_delivery: "Out for Delivery",
-    delivered: "Delivered",
-    cancelled: "Cancelled",
+    delivered:        "Delivered",
+    cancelled:        "Cancelled",
   };
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [

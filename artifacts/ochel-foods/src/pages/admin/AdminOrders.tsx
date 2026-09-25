@@ -12,6 +12,7 @@ import ManualOrderModal from "@/components/ui/ManualOrderModal";
 
 const STATUSES = [
   { value: "unpaid",           label: "Unpaid",           color: "bg-yellow-100 text-yellow-700" },
+  { value: "pending",          label: "Pending",          color: "bg-amber-100 text-amber-700" },
   { value: "confirmed",        label: "Confirmed",        color: "bg-blue-100 text-blue-700" },
   { value: "preparing",        label: "Preparing",        color: "bg-orange-100 text-orange-700" },
   { value: "out_for_delivery", label: "Out for Delivery", color: "bg-purple-100 text-purple-700" },
@@ -171,7 +172,7 @@ async function processReferralReward(orderId: string) {
     const { data: priorOrders } = await supabase
       .from("orders")
       .select("id")
-      .in("status", ["confirmed", "preparing", "out_for_delivery", "delivered"])
+      .in("status", ["pending", "confirmed", "preparing", "out_for_delivery", "delivered"])
       .neq("id", orderId)
       .or(orderFilters.join(","));
 
@@ -484,6 +485,7 @@ export default function AdminOrders() {
 
   // Filters
   const [datePreset, setDatePreset] = useState<DatePreset>("this_month");
+  const [pendingOrdersOnly, setPendingOrdersOnly] = useState(false);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -567,11 +569,15 @@ export default function AdminOrders() {
       .from("orders")
       .select(selectStr, countType ? { count: countType } : undefined);
 
-    const { start, end } = getDateRangeForPreset(datePreset, customStart, customEnd);
-    if (start) q = q.gte("created_at", start);
-    if (end) q = q.lte("created_at", end);
+    if (!pendingOrdersOnly) {
+      const { start, end } = getDateRangeForPreset(datePreset, customStart, customEnd);
+      if (start) q = q.gte("created_at", start);
+      if (end) q = q.lte("created_at", end);
+    }
 
-    if (statusFilter !== "all") {
+    if (pendingOrdersOnly) {
+      q = q.eq("status", "pending");
+    } else if (statusFilter !== "all") {
       q = q.eq("status", statusFilter);
     }
     if (dateFilter) {
@@ -596,7 +602,7 @@ export default function AdminOrders() {
     }
 
     return q.order("created_at", { ascending: false });
-  }, [datePreset, customStart, customEnd, statusFilter, dateFilter, zoneFilter, search, getDateRangeForPreset]);
+  }, [datePreset, pendingOrdersOnly, customStart, customEnd, statusFilter, dateFilter, zoneFilter, search, getDateRangeForPreset]);
 
   /* Main paginated load function */
   const load = useCallback(async () => {
@@ -688,9 +694,13 @@ export default function AdminOrders() {
         { event: "UPDATE", schema: "public", table: "orders" },
         (payload) => {
           const updated = payload.new as DBOrder;
-          setOrders((prev) =>
-            prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o))
-          );
+          if (pendingOrdersOnly) {
+            void load();
+          } else {
+            setOrders((prev) =>
+              prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o))
+            );
+          }
           setSelected((prev) =>
             prev?.id === updated.id ? { ...prev, ...updated } : prev
           );
@@ -703,7 +713,7 @@ export default function AdminOrders() {
       });
 
     return () => { supabase.removeChannel(channel); };
-  }, [page, pageSize]);
+  }, [page, pageSize, pendingOrdersOnly, load]);
 
   const updateStatus = async (orderId: string, status: string) => {
     setUpdating(orderId);
@@ -721,6 +731,7 @@ export default function AdminOrders() {
     setUpdating(null);
     setOrders((prev) => prev.map((o) => o.id === orderId ? { ...o, status: status as DBOrder["status"] } : o));
     if (selected?.id === orderId) setSelected((prev) => prev ? { ...prev, status: status as DBOrder["status"] } : null);
+    if (pendingOrdersOnly) void load();
 
     /* Record timeline entry — fire-and-forget; realtime will push it back */
     supabase.from("order_timeline").insert({ order_id: orderId, status }).then(() => {});
@@ -796,6 +807,7 @@ export default function AdminOrders() {
     setDateFilter("");
     setZoneFilter("");
     setDatePreset("this_month");
+    setPendingOrdersOnly(false);
     setCustomStart("");
     setCustomEnd("");
     setSearchInput("");
@@ -835,9 +847,9 @@ export default function AdminOrders() {
           {DATE_PRESETS.map((p) => (
             <button
               key={p.value}
-              onClick={() => { setDatePreset(p.value); setPage(1); }}
+              onClick={() => { setDatePreset(p.value); setPendingOrdersOnly(false); setPage(1); }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-[Montserrat] transition-all ${
-                datePreset === p.value
+                !pendingOrdersOnly && datePreset === p.value
                   ? "bg-white text-[#E8192C] shadow-sm"
                   : "text-gray-500 hover:text-gray-800"
               }`}
@@ -845,6 +857,17 @@ export default function AdminOrders() {
               {p.label}
             </button>
           ))}
+          <button
+            onClick={() => { setPendingOrdersOnly(true); setPage(1); }}
+            aria-pressed={pendingOrdersOnly}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-[Montserrat] transition-all ${
+              pendingOrdersOnly
+                ? "bg-white text-[#E8192C] shadow-sm"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            Pending Orders
+          </button>
         </div>
 
         {/* Filters toggle */}
@@ -900,7 +923,8 @@ export default function AdminOrders() {
           <div className="flex flex-col gap-1 min-w-40">
             <label className="text-xs font-semibold text-gray-500 font-[Montserrat] uppercase tracking-wide">Order Status</label>
             <select
-              value={statusFilter}
+              value={pendingOrdersOnly ? "pending" : statusFilter}
+              disabled={pendingOrdersOnly}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
             >
@@ -941,7 +965,7 @@ export default function AdminOrders() {
             <input
               type="date"
               value={customStart}
-              onChange={(e) => { setCustomStart(e.target.value); setDatePreset("custom"); setPage(1); }}
+              onChange={(e) => { setCustomStart(e.target.value); setDatePreset("custom"); setPendingOrdersOnly(false); setPage(1); }}
               className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
             />
           </div>
@@ -950,7 +974,7 @@ export default function AdminOrders() {
             <input
               type="date"
               value={customEnd}
-              onChange={(e) => { setCustomEnd(e.target.value); setDatePreset("custom"); setPage(1); }}
+              onChange={(e) => { setCustomEnd(e.target.value); setDatePreset("custom"); setPendingOrdersOnly(false); setPage(1); }}
               className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-[Montserrat] focus:outline-none focus:border-[#E8192C]"
             />
           </div>
@@ -980,11 +1004,12 @@ export default function AdminOrders() {
             <>
               Showing <strong className="text-gray-800">{fromItem}–{toItem}</strong> of{" "}
               <strong className="text-gray-800">{totalCount.toLocaleString()}</strong> orders
-              {datePreset !== "all" && (
+              {!pendingOrdersOnly && datePreset !== "all" && (
                 <span className="text-gray-400 ml-1">
                   ({DATE_PRESETS.find((p) => p.value === datePreset)?.label})
                 </span>
               )}
+              {pendingOrdersOnly && <span className="text-gray-400 ml-1">(Pending Orders)</span>}
             </>
           )}
         </p>
@@ -1035,7 +1060,7 @@ export default function AdminOrders() {
                 <tr>
                   <td colSpan={9} className="text-center py-12 text-gray-400 font-[Montserrat]">
                     No orders found
-                    {datePreset !== "all" && (
+                    {!pendingOrdersOnly && datePreset !== "all" && (
                       <button
                         onClick={() => { setDatePreset("all"); setPage(1); }}
                         className="block mx-auto mt-2 text-xs text-[#E8192C] underline font-semibold"

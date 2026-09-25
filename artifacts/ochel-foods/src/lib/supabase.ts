@@ -149,7 +149,7 @@ export type DBOrder = {
   // TODO: If Paystack (or another payment gateway) is integrated in the future,
   // the webhook/callback for a successful payment should automatically set status to
   // "confirmed" instead of "unpaid" — no manual admin action needed for paid orders.
-  status: "unpaid" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
+  status: "unpaid" | "pending" | "confirmed" | "preparing" | "out_for_delivery" | "delivered" | "cancelled";
   delivery_time: string | null;
   delivery_date: string | null;
   special_instructions: string | null;
